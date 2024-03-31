@@ -135,7 +135,22 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="BlackHoleInOne.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="stb_image.cpp" />
+    <ClCompile Include="VkBootstrap.cpp" />
+    <ClCompile Include="vk_engine.cpp" />
+    <ClCompile Include="vk_images.cpp" />
+    <ClCompile Include="vk_initializers.cpp" />
+    <ClCompile Include="vk_types.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="stb_image.h" />
+    <ClInclude Include="VkBootstrap.h" />
+    <ClInclude Include="VkBootstrapDispatch.h" />
+    <ClInclude Include="vk_engine.h" />
+    <ClInclude Include="vk_images.h" />
+    <ClInclude Include="vk_initializers.h" />
+    <ClInclude Include="vk_mem_alloc.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
