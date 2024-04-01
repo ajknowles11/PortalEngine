@@ -4,15 +4,6 @@
 
 #include "vk_types.h"
 
-struct FrameData
-{
-	VkCommandPool commandPool;
-	VkCommandBuffer mainCommandBuffer;
-
-	VkSemaphore swapchainSemaphore, renderSemaphore;
-	VkFence renderFence;
-};
-
 unsigned int constexpr FRAME_OVERLAP = 2;
 
 class VulkanEngine
@@ -38,6 +29,9 @@ public:
 	VkSwapchainKHR swapchain;
 	VkFormat swapchainImageFormat;
 
+	AllocatedImage drawImage;
+	VkExtent2D drawExtent;
+
 	std::vector<VkImage> swapchainImages;
 	std::vector<VkImageView> swapchainImageViews;
 	VkExtent2D swapchainExtent;
@@ -48,6 +42,10 @@ public:
 
 	VkQueue graphicsQueue;
 	uint32_t graphicsQueueFamily;
+
+	DeletionQueue mainDeletionQueue;
+
+	VmaAllocator allocator;
 
 	void init();
 	void cleanup();
@@ -61,6 +59,8 @@ private:
 	void initCommands();
 	void initSyncStructs();
 
-	void createSwapchain(uint32_t const width, uint32_t const height);
-	void destroySwapchain();
+	void createSwapchain(uint32_t width, uint32_t height);
+	void destroySwapchain() const;
+
+	void drawBackground(VkCommandBuffer cmd) const;
 };

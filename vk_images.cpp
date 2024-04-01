@@ -2,7 +2,7 @@
 
 #include "vk_initializers.h"
 
-void vkUtil::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout)
+void vkUtil::transition_image(VkCommandBuffer const cmd, VkImage const image, VkImageLayout const currentLayout, VkImageLayout const newLayout)
 {
 	VkImageMemoryBarrier2 imageBarrier
 	{
@@ -29,4 +29,46 @@ void vkUtil::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout 
 	};
 
 	vkCmdPipelineBarrier2(cmd, &depInfo);
+}
+
+void vkUtil::copy_image_to_image(VkCommandBuffer const cmd, VkImage const source, VkImage const destination, VkExtent2D const srcSize, VkExtent2D const dstSize)
+{
+	VkImageBlit2 blitRegion
+	{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
+		.pNext = nullptr
+	};
+
+	blitRegion.srcOffsets[1].x = static_cast<int32_t>(srcSize.width);
+	blitRegion.srcOffsets[1].y = static_cast<int32_t>(srcSize.height);
+	blitRegion.srcOffsets[1].z = 1;
+
+	blitRegion.dstOffsets[1].x = static_cast<int32_t>(dstSize.width);
+	blitRegion.dstOffsets[1].y = static_cast<int32_t>(dstSize.height);
+	blitRegion.dstOffsets[1].z = 1;
+
+	blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	blitRegion.srcSubresource.baseArrayLayer = 0;
+	blitRegion.srcSubresource.layerCount = 1;
+	blitRegion.srcSubresource.mipLevel = 0;
+
+	blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	blitRegion.dstSubresource.baseArrayLayer = 0;
+	blitRegion.dstSubresource.layerCount = 1;
+	blitRegion.dstSubresource.mipLevel = 0;
+
+	VkBlitImageInfo2 const blitInfo
+	{
+		.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+		.pNext = nullptr,
+		.srcImage = source,
+		.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		.dstImage = destination,
+		.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		.regionCount = 1,
+		.pRegions = &blitRegion,
+		.filter = VK_FILTER_LINEAR
+	};
+
+	vkCmdBlitImage2(cmd, &blitInfo);
 }

@@ -9,6 +9,9 @@
 
 #include "VkBootstrap.h"
 
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
+
 #include <chrono>
 #include <thread>
 
@@ -60,6 +63,7 @@ void VulkanEngine::cleanup()
 	if (isInitialized)
 	{
 		vkDeviceWaitIdle(device);
+		mainDeletionQueue.flush();
 
 		for (unsigned int i = 0; i < FRAME_OVERLAP; i++)
 		{
@@ -88,6 +92,9 @@ void VulkanEngine::cleanup()
 void VulkanEngine::draw()
 {
 	VK_CHECK(vkWaitForFences(device, 1, &getCurrentFrame().renderFence, true, 1000000000));
+
+	getCurrentFrame().deletionQueue.flush();
+
 	VK_CHECK(vkResetFences(device, 1, &getCurrentFrame().renderFence));
 
 	uint32_t swapchainImageIndex;
@@ -95,20 +102,24 @@ void VulkanEngine::draw()
 
 	VkCommandBuffer const cmd = getCurrentFrame().mainCommandBuffer;
 	VK_CHECK(vkResetCommandBuffer(cmd, 0));
+
+	drawExtent.width = drawImage.imageExtent.width;
+	drawExtent.height = drawImage.imageExtent.height;
+
 	VkCommandBufferBeginInfo const cmdBeginInfo = vkInit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-	vkUtil::transition_image(cmd, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+	vkUtil::transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-	float const flash = std::abs(std::sin(static_cast<float>(frameNumber) / 120.0f));
-	VkClearColorValue const clearValue = {{0.0f, 0.0f, flash, 1.0f}};
-
-	VkImageSubresourceRange const clearRange = vkInit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
-
-	vkCmdClearColorImage(cmd, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
-
-	vkUtil::transition_image(cmd, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
+	drawBackground(cmd);
+	
+	vkUtil::transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	vkUtil::transition_image(cmd, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	
+	vkUtil::copy_image_to_image(cmd, drawImage.image, swapchainImages[swapchainImageIndex], drawExtent, swapchainExtent);
+	
+	vkUtil::transition_image(cmd, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
 	VkCommandBufferSubmitInfo const cmdInfo = vkInit::command_buffer_submit_info(cmd);
@@ -116,7 +127,7 @@ void VulkanEngine::draw()
 	VkSemaphoreSubmitInfo const waitInfo = vkInit::semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, getCurrentFrame().swapchainSemaphore);
 	VkSemaphoreSubmitInfo const signalInfo = vkInit::semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, getCurrentFrame().renderSemaphore);
 
-	VkSubmitInfo2 submit = vkInit::submit_info(&cmdInfo, &signalInfo, &waitInfo);
+	VkSubmitInfo2 const submit = vkInit::submit_info(&cmdInfo, &signalInfo, &waitInfo);
 
 	VK_CHECK(vkQueueSubmit2(graphicsQueue, 1, &submit, getCurrentFrame().renderFence));
 
@@ -195,11 +206,56 @@ void VulkanEngine::initVulkan()
 
 	graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
 	graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
+
+	VmaAllocatorCreateInfo const allocatorInfo
+	{
+		.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+		.physicalDevice = selectedGPU,
+		.device = device,
+		.instance = instance
+	};
+	vmaCreateAllocator(&allocatorInfo, &allocator);
+
+	mainDeletionQueue.push_function([&]()
+	{
+		vmaDestroyAllocator(allocator);
+	});
 }
 
 void VulkanEngine::initSwapchain()
 {
 	createSwapchain(windowExtent.width, windowExtent.height);
+
+	VkExtent3D const drawImageExtent = { windowExtent.width, windowExtent.height, 1 };
+
+	drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	drawImage.imageExtent = drawImageExtent;
+
+	VkImageUsageFlags drawImageUsages{};
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+	VkImageCreateInfo const imgCreateInfo = vkInit::image_create_info(drawImage.imageFormat, drawImageUsages, drawImageExtent);
+
+	VmaAllocationCreateInfo constexpr imgAllocInfo
+	{
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+		.requiredFlags = static_cast<VkMemoryPropertyFlags>(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+	};
+
+	vmaCreateImage(allocator, &imgCreateInfo, &imgAllocInfo, &drawImage.image, &drawImage.allocation, nullptr);
+
+	VkImageViewCreateInfo const imgViewCreateInfo = vkInit::image_view_create_info(drawImage.imageFormat, drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+	VK_CHECK(vkCreateImageView(device, &imgViewCreateInfo, nullptr, &drawImage.imageView));
+
+	mainDeletionQueue.push_function([=, this]()
+	{
+		vkDestroyImageView(device, drawImage.imageView, nullptr);
+		vmaDestroyImage(allocator, drawImage.image, drawImage.allocation);
+	});
 }
 
 void VulkanEngine::initCommands()
@@ -251,7 +307,7 @@ void VulkanEngine::createSwapchain(uint32_t const width, uint32_t const height)
 	swapchainImageViews = vkbSwapchain.get_image_views().value();
 }
 
-void VulkanEngine::destroySwapchain()
+void VulkanEngine::destroySwapchain() const
 {
 	vkDestroySwapchainKHR(device, swapchain, nullptr);
 
@@ -261,3 +317,12 @@ void VulkanEngine::destroySwapchain()
 	}
 }
 
+void VulkanEngine::drawBackground(VkCommandBuffer const cmd) const
+{
+	float const flash = std::abs(std::sin(static_cast<float>(frameNumber) / 120.0f));
+	VkClearColorValue const clearValue = { {0.0f, 0.0f, flash, 1.0f} };
+
+	VkImageSubresourceRange const clearRange = vkInit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+
+	vkCmdClearColorImage(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+}

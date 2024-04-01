@@ -117,3 +117,43 @@ VkSubmitInfo2 vkInit::submit_info(VkCommandBufferSubmitInfo const* cmd, VkSemaph
 	};
 	return info;
 }
+
+VkImageCreateInfo vkInit::image_create_info(VkFormat const format, VkImageUsageFlags const usageFlags, VkExtent3D const extent)
+{
+	VkImageCreateInfo const info
+	{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.pNext = nullptr,
+		.imageType = VK_IMAGE_TYPE_2D,
+		.format = format,
+		.extent = extent,
+		.mipLevels = 1,
+		.arrayLayers = 1,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.tiling = VK_IMAGE_TILING_OPTIMAL,
+		.usage = usageFlags
+	};
+	return info;
+}
+
+VkImageViewCreateInfo vkInit::image_view_create_info(VkFormat const format, VkImage const image, VkImageAspectFlags const aspectFlags)
+{
+	VkImageViewCreateInfo const info
+	{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+		.pNext = nullptr,
+		.image = image,
+		.viewType = VK_IMAGE_VIEW_TYPE_2D,
+		.format = format,
+		.subresourceRange = 
+		{
+			.aspectMask = aspectFlags,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1
+		}
+	};
+	return info;
+}
+
