@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "vk_descriptors.h"
 #include "vk_types.h"
 
 unsigned int constexpr FRAME_OVERLAP = 2;
@@ -25,6 +26,14 @@ public:
 	VkPhysicalDevice selectedGPU;
 	VkDevice device;
 	VkSurfaceKHR surface;
+
+	DescriptorAllocator globalDescriptorAllocator;
+
+	VkDescriptorSet drawImageDescriptors;
+	VkDescriptorSetLayout drawImageDescriptorLayout;
+
+	VkPipeline gradientPipeline;
+	VkPipelineLayout gradientPipelineLayout;
 
 	VkSwapchainKHR swapchain;
 	VkFormat swapchainImageFormat;
@@ -58,6 +67,11 @@ private:
 	void initSwapchain();
 	void initCommands();
 	void initSyncStructs();
+
+	void initDescriptors();
+
+	void initPipelines();
+	void initBackgroundPipelines();
 
 	void createSwapchain(uint32_t width, uint32_t height);
 	void destroySwapchain() const;

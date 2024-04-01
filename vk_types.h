@@ -34,7 +34,7 @@ struct DeletionQueue
 {
 	std::deque<std::function<void()>> deletors;
 
-	void push_function(std::function<void()>&& function) {
+	void pushFunction(std::function<void()>&& function) {
 		deletors.push_back(function);
 	}
 

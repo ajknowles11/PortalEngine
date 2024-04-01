@@ -138,19 +138,27 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="stb_image.cpp" />
     <ClCompile Include="VkBootstrap.cpp" />
+    <ClCompile Include="vk_descriptors.cpp" />
     <ClCompile Include="vk_engine.cpp" />
     <ClCompile Include="vk_images.cpp" />
     <ClCompile Include="vk_initializers.cpp" />
+    <ClCompile Include="vk_pipelines.cpp" />
     <ClCompile Include="vk_types.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="shaders.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="VkBootstrap.h" />
     <ClInclude Include="VkBootstrapDispatch.h" />
+    <ClInclude Include="vk_descriptors.h" />
     <ClInclude Include="vk_engine.h" />
     <ClInclude Include="vk_images.h" />
     <ClInclude Include="vk_initializers.h" />
     <ClInclude Include="vk_mem_alloc.h" />
+    <ClInclude Include="vk_pipelines.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="shaders\glsl\gradient.comp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
