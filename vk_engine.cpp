@@ -8,6 +8,9 @@
 #include "vk_pipelines.h"
 #include "vk_types.h"
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
 #include "VkBootstrap.h"
 
 #define VMA_IMPLEMENTATION
@@ -59,6 +62,7 @@ void VulkanEngine::init()
 	initSyncStructs();
 	initDescriptors();
 	initPipelines();
+	initImgui();
 
 	isInitialized = true;
 }
@@ -123,8 +127,12 @@ void VulkanEngine::draw()
 	
 	vkUtil::copy_image_to_image(cmd, drawImage.image, swapchainImages[swapchainImageIndex], drawExtent, swapchainExtent);
 	
-	vkUtil::transition_image(cmd, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-	
+	vkUtil::transition_image(cmd, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+	drawImgui(cmd, swapchainImageViews[swapchainImageIndex]);
+
+	vkUtil::transition_image(cmd, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
 	VkCommandBufferSubmitInfo const cmdInfo = vkInit::command_buffer_submit_info(cmd);
@@ -159,9 +167,40 @@ void VulkanEngine::run()
 	{
 		glfwPollEvents();
 
+		ImGui_ImplVulkan_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
+
+		ImGui::ShowDemoWindow();
+
+		ImGui::Render();
+
 		draw();
 	}
 
+}
+
+void VulkanEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function)
+{
+	VK_CHECK(vkResetFences(device, 1, &immFence));
+	VK_CHECK(vkResetCommandBuffer(immCommandBuffer, 0));
+
+	VkCommandBuffer const cmd = immCommandBuffer;
+
+	VkCommandBufferBeginInfo const cmdBeginInfo = vkInit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+	function(cmd);
+
+	VK_CHECK(vkEndCommandBuffer(cmd));
+
+	VkCommandBufferSubmitInfo const cmdInfo = vkInit::command_buffer_submit_info(cmd);
+	VkSubmitInfo2 const submit = vkInit::submit_info(&cmdInfo, nullptr, nullptr);
+
+	VK_CHECK(vkQueueSubmit2(graphicsQueue, 1, &submit, immFence));
+
+	VK_CHECK(vkWaitForFences(device, 1, &immFence, true, 9999999999));
 }
 
 void VulkanEngine::initVulkan()
@@ -256,7 +295,7 @@ void VulkanEngine::initSwapchain()
 
 	VK_CHECK(vkCreateImageView(device, &imgViewCreateInfo, nullptr, &drawImage.imageView));
 
-	mainDeletionQueue.pushFunction([=, this]()
+	mainDeletionQueue.pushFunction([this]()
 	{
 		vkDestroyImageView(device, drawImage.imageView, nullptr);
 		vmaDestroyImage(allocator, drawImage.image, drawImage.allocation);
@@ -271,10 +310,21 @@ void VulkanEngine::initCommands()
 	{
 		VK_CHECK(vkCreateCommandPool(device, &commandPoolInfo, nullptr, &frames[i].commandPool));
 
-		VkCommandBufferAllocateInfo cmdAllocInfo = vkInit::command_buffer_allocate_info(frames[i].commandPool, 1);
+		VkCommandBufferAllocateInfo const cmdAllocInfo = vkInit::command_buffer_allocate_info(frames[i].commandPool, 1);
 
 		VK_CHECK(vkAllocateCommandBuffers(device, &cmdAllocInfo, &frames[i].mainCommandBuffer));
 	}
+
+	VK_CHECK(vkCreateCommandPool(device, &commandPoolInfo, nullptr, &immCommandPool));
+
+	VkCommandBufferAllocateInfo const cmdAllocInfo = vkInit::command_buffer_allocate_info(immCommandPool, 1);
+
+	VK_CHECK(vkAllocateCommandBuffers(device, &cmdAllocInfo, &immCommandBuffer));
+
+	mainDeletionQueue.pushFunction([this]()
+	{
+		vkDestroyCommandPool(device, immCommandPool, nullptr);
+	});
 }
 
 void VulkanEngine::initSyncStructs()
@@ -289,6 +339,9 @@ void VulkanEngine::initSyncStructs()
 		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &frames[i].swapchainSemaphore));
 		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &frames[i].renderSemaphore));
 	}
+
+	VK_CHECK(vkCreateFence(device, &fenceCreateInfo, nullptr, &immFence));
+	mainDeletionQueue.pushFunction([this]() {vkDestroyFence(device, immFence, nullptr); });
 }
 
 void VulkanEngine::initDescriptors()
@@ -368,6 +421,66 @@ void VulkanEngine::initBackgroundPipelines()
 	});
 }
 
+void VulkanEngine::initImgui()
+{
+	VkDescriptorPoolSize poolSizes[] = { { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
+
+	VkDescriptorPoolCreateInfo const poolInfo
+	{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+		.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+		.maxSets = 1000,
+		.poolSizeCount = static_cast<uint32_t>(std::size(poolSizes)),
+		.pPoolSizes = poolSizes
+	};
+
+	VkDescriptorPool imguiPool;
+	VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &imguiPool));
+
+	ImGui::CreateContext();
+
+	ImGui_ImplGlfw_InitForVulkan(window, true);
+
+	VkPipelineRenderingCreateInfoKHR constexpr imguiPipelineInfo
+	{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+		.pNext = nullptr
+	};
+
+	ImGui_ImplVulkan_InitInfo initInfo
+	{
+		.Instance = instance,
+		.PhysicalDevice = selectedGPU,
+		.Device = device,
+		.Queue = graphicsQueue,
+		.DescriptorPool = imguiPool,
+		.MinImageCount = 3,
+		.ImageCount = 3,
+		.MSAASamples = VK_SAMPLE_COUNT_1_BIT,
+		.UseDynamicRendering = true,
+		.PipelineRenderingCreateInfo = imguiPipelineInfo
+	};
+	ImGui_ImplVulkan_Init(&initInfo);
+
+	immediateSubmit([&](VkCommandBuffer cmd) {ImGui_ImplVulkan_CreateFontsTexture(); });
+
+	mainDeletionQueue.pushFunction([=, this]()
+	{
+		vkDestroyDescriptorPool(device, imguiPool, nullptr);
+		ImGui_ImplVulkan_Shutdown();
+	});
+}
+
 void VulkanEngine::createSwapchain(uint32_t const width, uint32_t const height)
 {
 	vkb::SwapchainBuilder swapchainBuilder{ selectedGPU, device, surface };
@@ -407,3 +520,16 @@ void VulkanEngine::drawBackground(VkCommandBuffer const cmd) const
 	
 	vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(static_cast<float>(drawExtent.width) / 16.0f)), static_cast<uint32_t>(std::ceil(static_cast<float>(drawExtent.height) / 16.0f)), 1);
 }
+
+void VulkanEngine::drawImgui(VkCommandBuffer cmd, VkImageView targetImageView) const
+{
+	VkRenderingAttachmentInfo const colorAttachment = vkInit::attachment_info(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	VkRenderingInfo const renderInfo = vkInit::rendering_info(swapchainExtent, &colorAttachment, nullptr);
+
+	vkCmdBeginRendering(cmd, &renderInfo);
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+	vkCmdEndRendering(cmd);
+}
+

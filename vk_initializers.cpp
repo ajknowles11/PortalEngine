@@ -157,3 +157,39 @@ VkImageViewCreateInfo vkInit::image_view_create_info(VkFormat const format, VkIm
 	return info;
 }
 
+VkRenderingAttachmentInfo vkInit::attachment_info(VkImageView const view, VkClearValue const* clear, VkImageLayout const layout)
+{
+	VkRenderingAttachmentInfo colorAttachment
+	{
+		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+		.pNext = nullptr,
+		.imageView = view,
+		.imageLayout = layout,
+		.loadOp = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+	};
+
+	if (clear) {
+		colorAttachment.clearValue = *clear;
+	
+	}
+
+	return colorAttachment;
+}
+
+VkRenderingInfo vkInit::rendering_info(VkExtent2D const renderExtent, VkRenderingAttachmentInfo const* colorAttachment,
+	VkRenderingAttachmentInfo const* depthAttachment)
+{
+	VkRenderingInfo const renderInfo
+	{
+		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+		.pNext = nullptr,
+		.renderArea = VkRect2D{ VkOffset2D { 0, 0 }, renderExtent },
+		.layerCount = 1,
+		.colorAttachmentCount = 1,
+		.pColorAttachments = colorAttachment,
+		.pDepthAttachment = depthAttachment,
+		.pStencilAttachment = nullptr
+	};
+	return renderInfo;
+}

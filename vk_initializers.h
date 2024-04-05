@@ -28,4 +28,9 @@ namespace vkInit {
 	VkImageCreateInfo image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
 
 	VkImageViewCreateInfo image_view_create_info(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
+
+	VkRenderingAttachmentInfo attachment_info(VkImageView view, VkClearValue const* clear, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+	VkRenderingInfo rendering_info(VkExtent2D renderExtent, VkRenderingAttachmentInfo const* colorAttachment,
+		VkRenderingAttachmentInfo const* depthAttachment);
 }

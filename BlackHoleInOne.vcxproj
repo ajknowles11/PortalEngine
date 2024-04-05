@@ -104,14 +104,14 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.3.275.0\Include;$(ProjectDir)lib\glm;$(ProjectDir)lib\glfw-3.4.bin.WIN64\include;$(ProjectDir)lib\freetype-2.13.2\include\freetype;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.3.275.0\Include;$(ProjectDir)lib\glm;$(ProjectDir)lib\glfw\include;$(ProjectDir)lib\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>vulkan-1.lib;glfw3.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\VulkanSDK\1.3.275.0\Lib;$(ProjectDir)lib\glfw-3.4.bin.WIN64\lib-vc2022;$(ProjectDir)lib\JoltPhysics\Debug;%(AdditionalLibraryDirectories);$(ProjectDir)lib\freetype-2.13.2\objs</AdditionalLibraryDirectories>
+      <AdditionalDependencies>vulkan-1.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\VulkanSDK\1.3.275.0\Lib;$(ProjectDir)lib\glfw\lib-vc2022;$(ProjectDir)lib\JoltPhysics\Debug</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -122,7 +122,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.3.275.0\Include;$(ProjectDir)lib\glm;$(ProjectDir)lib\glfw-3.4.bin.WIN64\include;$(ProjectDir)lib\freetype-2.13.2\include\freetype;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.3.275.0\Include;$(ProjectDir)lib\glm;$(ProjectDir)lib\glfw\include;$(ProjectDir)lib\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -130,11 +130,19 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>vulkan-1.lib;glfw3.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\VulkanSDK\1.3.275.0\Lib;$(ProjectDir)lib\glfw-3.4.bin.WIN64\lib-vc2022;$(ProjectDir)lib\JoltPhysics\Distribution;%(AdditionalLibraryDirectories);$(ProjectDir)lib\freetype-2.13.2\objs</AdditionalLibraryDirectories>
+      <AdditionalDependencies>vulkan-1.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\VulkanSDK\1.3.275.0\Lib;$(ProjectDir)lib\glfw\lib-vc2022;$(ProjectDir)lib\JoltPhysics\Distribution</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="lib\imgui\imgui.cpp" />
+    <ClCompile Include="lib\imgui\imgui_demo.cpp" />
+    <ClCompile Include="lib\imgui\imgui_draw.cpp" />
+    <ClCompile Include="lib\imgui\imgui_impl_glfw.cpp" />
+    <ClCompile Include="lib\imgui\imgui_impl_vulkan.cpp" />
+    <ClCompile Include="lib\imgui\imgui_stdlib.cpp" />
+    <ClCompile Include="lib\imgui\imgui_tables.cpp" />
+    <ClCompile Include="lib\imgui\imgui_widgets.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="stb_image.cpp" />
     <ClCompile Include="VkBootstrap.cpp" />
@@ -146,6 +154,15 @@
     <ClCompile Include="vk_types.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="lib\imgui\imconfig.h" />
+    <ClInclude Include="lib\imgui\imgui.h" />
+    <ClInclude Include="lib\imgui\imgui_impl_glfw.h" />
+    <ClInclude Include="lib\imgui\imgui_impl_vulkan.h" />
+    <ClInclude Include="lib\imgui\imgui_internal.h" />
+    <ClInclude Include="lib\imgui\imgui_stdlib.h" />
+    <ClInclude Include="lib\imgui\imstb_rectpack.h" />
+    <ClInclude Include="lib\imgui\imstb_textedit.h" />
+    <ClInclude Include="lib\imgui\imstb_truetype.h" />
     <ClInclude Include="shaders.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="VkBootstrap.h" />
@@ -158,7 +175,11 @@
     <ClInclude Include="vk_pipelines.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="lib\imgui\imgui.natstepfilter" />
     <None Include="shaders\glsl\gradient.comp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="lib\imgui\imgui.natvis" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

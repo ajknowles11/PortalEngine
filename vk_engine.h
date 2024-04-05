@@ -56,10 +56,16 @@ public:
 
 	VmaAllocator allocator;
 
+	VkFence immFence;
+	VkCommandBuffer immCommandBuffer;
+	VkCommandPool immCommandPool;
+
 	void init();
 	void cleanup();
 	void draw();
 	void run();
+
+	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 
 private:
 
@@ -73,8 +79,11 @@ private:
 	void initPipelines();
 	void initBackgroundPipelines();
 
+	void initImgui();
+
 	void createSwapchain(uint32_t width, uint32_t height);
 	void destroySwapchain() const;
 
 	void drawBackground(VkCommandBuffer cmd) const;
+	void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
 };
