@@ -177,6 +177,7 @@
   <ItemGroup>
     <None Include="lib\imgui\imgui.natstepfilter" />
     <None Include="shaders\glsl\gradient.comp" />
+    <None Include="shaders\glsl\sky.comp" />
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="lib\imgui\imgui.natvis" />

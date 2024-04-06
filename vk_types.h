@@ -47,22 +47,3 @@ struct DeletionQueue
 		deletors.clear();
 	}
 };
-
-struct FrameData
-{
-	VkCommandPool commandPool;
-	VkCommandBuffer mainCommandBuffer;
-
-	VkSemaphore swapchainSemaphore, renderSemaphore;
-	VkFence renderFence;
-
-	DeletionQueue deletionQueue;
-};
-
-struct AllocatedImage {
-	VkImage image;
-	VkImageView imageView;
-	VmaAllocation allocation;
-	VkExtent3D imageExtent;
-	VkFormat imageFormat;
-};

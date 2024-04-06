@@ -7,6 +7,41 @@
 
 unsigned int constexpr FRAME_OVERLAP = 2;
 
+struct FrameData
+{
+	VkCommandPool commandPool;
+	VkCommandBuffer mainCommandBuffer;
+
+	VkSemaphore swapchainSemaphore, renderSemaphore;
+	VkFence renderFence;
+
+	DeletionQueue deletionQueue;
+};
+
+struct AllocatedImage {
+	VkImage image;
+	VkImageView imageView;
+	VmaAllocation allocation;
+	VkExtent3D imageExtent;
+	VkFormat imageFormat;
+};
+
+struct ComputePushConstants
+{
+	glm::vec4 data1;
+	glm::vec4 data2;
+	glm::vec4 data3;
+	glm::vec4 data4;
+};
+
+struct ComputeEffect
+{
+	std::string name;
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+	ComputePushConstants data;
+};
+
 class VulkanEngine
 {
 public:
@@ -32,7 +67,6 @@ public:
 	VkDescriptorSet drawImageDescriptors;
 	VkDescriptorSetLayout drawImageDescriptorLayout;
 
-	VkPipeline gradientPipeline;
 	VkPipelineLayout gradientPipelineLayout;
 
 	VkSwapchainKHR swapchain;
@@ -60,12 +94,15 @@ public:
 	VkCommandBuffer immCommandBuffer;
 	VkCommandPool immCommandPool;
 
+	std::vector<ComputeEffect> backgroundEffects;
+	int currentBackgroundEffect = 0;
+
 	void init();
 	void cleanup();
 	void draw();
 	void run();
 
-	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
+	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function) const;
 
 private:
 

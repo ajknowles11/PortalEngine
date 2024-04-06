@@ -140,6 +140,9 @@
       <Filter>Shader Files</Filter>
     </None>
     <None Include="lib\imgui\imgui.natstepfilter" />
+    <None Include="shaders\glsl\sky.comp">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="lib\imgui\imgui.natvis" />
