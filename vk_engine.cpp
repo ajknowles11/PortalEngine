@@ -451,10 +451,12 @@ void VulkanEngine::initImgui()
 
 	ImGui_ImplGlfw_InitForVulkan(window, true);
 
-	VkPipelineRenderingCreateInfoKHR constexpr imguiPipelineInfo
+	VkPipelineRenderingCreateInfoKHR const imguiPipelineInfo
 	{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
-		.pNext = nullptr
+		.pNext = nullptr,
+		.colorAttachmentCount = 1,
+		.pColorAttachmentFormats = &swapchainImageFormat
 	};
 
 	ImGui_ImplVulkan_InitInfo initInfo
@@ -462,6 +464,7 @@ void VulkanEngine::initImgui()
 		.Instance = instance,
 		.PhysicalDevice = selectedGPU,
 		.Device = device,
+		.QueueFamily = graphicsQueueFamily,
 		.Queue = graphicsQueue,
 		.DescriptorPool = imguiPool,
 		.MinImageCount = 3,
