@@ -176,6 +176,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="lib\imgui\imgui.natstepfilter" />
+    <None Include="shaders\glsl\colored_triangle.frag" />
+    <None Include="shaders\glsl\colored_triangle.vert" />
     <None Include="shaders\glsl\gradient.comp" />
     <None Include="shaders\glsl\sky.comp" />
   </ItemGroup>

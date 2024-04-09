@@ -122,7 +122,11 @@ void VulkanEngine::draw()
 
 	drawBackground(cmd);
 	
-	vkUtil::transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	vkUtil::transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+	drawGeometry(cmd);
+
+	vkUtil::transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	vkUtil::transition_image(cmd, swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 	
 	vkUtil::copy_image_to_image(cmd, drawImage.image, swapchainImages[swapchainImageIndex], drawExtent, swapchainExtent);
@@ -175,9 +179,9 @@ void VulkanEngine::run()
 		{
 			ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
 
-			ImGui::Text("Selected effect: ", selected.name);
+			ImGui::Text("Selected effect: %s", selected.name.c_str());
 
-			ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0, backgroundEffects.size() - 1);
+			ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0, static_cast<int>(backgroundEffects.size() - 1));
 
 			ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
 			ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
@@ -392,6 +396,7 @@ void VulkanEngine::initDescriptors()
 void VulkanEngine::initPipelines()
 {
 	initBackgroundPipelines();
+	initTrianglePipeline();
 }
 
 void VulkanEngine::initBackgroundPipelines()
@@ -470,6 +475,40 @@ void VulkanEngine::initBackgroundPipelines()
 		vkDestroyPipelineLayout(device, gradientPipelineLayout, nullptr);
 		vkDestroyPipeline(device, sky.pipeline, nullptr);
 		vkDestroyPipeline(device, gradient.pipeline, nullptr);
+	});
+}
+
+void VulkanEngine::initTrianglePipeline()
+{
+	VkShaderModule const triangleVertShader = vkUtil::load_shader_module(shaders::coloredTriangleVert, shaders::coloredTriangleVertSize, device);
+	VkShaderModule const triangleFragShader = vkUtil::load_shader_module(shaders::coloredTriangleFrag, shaders::coloredTriangleFragSize, device);
+
+	VkPipelineLayoutCreateInfo const pipelineLayoutInfo = vkInit::pipeline_layout_create_info();
+	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &trianglePipelineLayout));
+
+	PipelineBuilder pipelineBuilder;
+
+	pipelineBuilder.pipelineLayout = trianglePipelineLayout;
+	pipelineBuilder.setShaders(triangleVertShader, triangleFragShader);
+	pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
+	pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	pipelineBuilder.setMultisamplingNone();
+	pipelineBuilder.disableBlending();
+	pipelineBuilder.disableDepthTest();
+
+	pipelineBuilder.setColorAttachmentFormat(drawImage.imageFormat);
+	pipelineBuilder.setDepthFormat(VK_FORMAT_UNDEFINED);
+
+	trianglePipeline = pipelineBuilder.buildPipeline(device);
+
+	vkDestroyShaderModule(device, triangleFragShader, nullptr);
+	vkDestroyShaderModule(device, triangleVertShader, nullptr);
+
+	mainDeletionQueue.pushFunction([&]()
+	{
+		vkDestroyPipelineLayout(device, trianglePipelineLayout, nullptr);
+		vkDestroyPipeline(device, trianglePipeline, nullptr);
 	});
 }
 
@@ -580,7 +619,47 @@ void VulkanEngine::drawBackground(VkCommandBuffer const cmd) const
 	vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(static_cast<float>(drawExtent.width) / 16.0f)), static_cast<uint32_t>(std::ceil(static_cast<float>(drawExtent.height) / 16.0f)), 1);
 }
 
-void VulkanEngine::drawImgui(VkCommandBuffer cmd, VkImageView targetImageView) const
+void VulkanEngine::drawGeometry(VkCommandBuffer const cmd) const
+{
+	VkRenderingAttachmentInfo const colorAttachment = vkInit::attachment_info(drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
+
+	VkRenderingInfo const renderInfo = vkInit::rendering_info(drawExtent, &colorAttachment, nullptr);
+	vkCmdBeginRendering(cmd, &renderInfo);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline);
+
+	VkViewport const viewport
+	{
+		.x = 0.0f,
+		.y = 0.0f,
+		.width = static_cast<float>(drawExtent.width),
+		.height = static_cast<float>(drawExtent.height),
+		.minDepth = 0.0f,
+		.maxDepth = 1.0f
+	};
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+	VkRect2D const scissor
+	{
+		.offset
+		{
+			.x = 0,
+			.y = 0
+		},
+		.extent
+		{
+			.width = drawExtent.width,
+			.height = drawExtent.height
+		}
+	};
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	vkCmdEndRendering(cmd);
+}
+
+void VulkanEngine::drawImgui(VkCommandBuffer const cmd, VkImageView const targetImageView) const
 {
 	VkRenderingAttachmentInfo const colorAttachment = vkInit::attachment_info(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	VkRenderingInfo const renderInfo = vkInit::rendering_info(swapchainExtent, &colorAttachment, nullptr);

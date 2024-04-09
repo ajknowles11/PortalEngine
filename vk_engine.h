@@ -97,6 +97,9 @@ public:
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBackgroundEffect = 0;
 
+	VkPipelineLayout trianglePipelineLayout;
+	VkPipeline trianglePipeline;
+
 	void init();
 	void cleanup();
 	void draw();
@@ -115,6 +118,7 @@ private:
 
 	void initPipelines();
 	void initBackgroundPipelines();
+	void initTrianglePipeline();
 
 	void initImgui();
 
@@ -122,5 +126,6 @@ private:
 	void destroySwapchain() const;
 
 	void drawBackground(VkCommandBuffer cmd) const;
+	void drawGeometry(VkCommandBuffer cmd) const;
 	void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
 };
