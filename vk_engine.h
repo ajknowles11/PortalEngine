@@ -52,9 +52,7 @@ public:
 	VkExtent2D windowExtent{ 1920, 1080 };
 	std::string windowTitle = "Black Hole-in-One";
 
-	struct GLFWwindow* window{ nullptr };
-
-	static VulkanEngine& get();
+	struct SDL_Window* window{ nullptr };
 
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debugMessenger;

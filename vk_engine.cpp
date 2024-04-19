@@ -1,7 +1,7 @@
 #include "vk_engine.h"
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#include <SDL.h>
+#include <SDL_vulkan.h>
 
 #include "vk_images.h"
 #include "vk_initializers.h"
@@ -9,7 +9,7 @@
 #include "vk_types.h"
 
 #include "imgui.h"
-#include "imgui_impl_glfw.h"
+#include "imgui_impl_sdl2.h"
 #include "imgui_impl_vulkan.h"
 #include "VkBootstrap.h"
 
@@ -27,32 +27,20 @@ bool constexpr bUseValidationLayers = true;
 bool constexpr bUseValidationLayers = false;
 #endif
 
-
-VulkanEngine* loadedEngine = nullptr;
-
-VulkanEngine& VulkanEngine::get() { return *loadedEngine; }
 void VulkanEngine::init()
 {
-	assert(loadedEngine == nullptr);
-	loadedEngine = this;
+	SDL_Init(SDL_INIT_VIDEO);
 
-	if (!glfwInit())
-	{
-		throw std::runtime_error("Error initializing GLFW!");
-	}
+	SDL_WindowFlags windowFlags = static_cast<SDL_WindowFlags>(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-	window = glfwCreateWindow(static_cast<int>(windowExtent.width),
+	window = SDL_CreateWindow(
+		windowTitle.c_str(),
+		SDL_WINDOWPOS_UNDEFINED,
+		SDL_WINDOWPOS_UNDEFINED,
+		static_cast<int>(windowExtent.width),
 		static_cast<int>(windowExtent.height),
-		windowTitle.c_str(), nullptr, nullptr);
-
-	if (!window)
-	{
-		glfwTerminate();
-		throw std::runtime_error("Error creating GLFW window!");
-	}
+		windowFlags
+	);
 
 	//import/handle window settings here, such as min size, fullscreen borderless, refresh rate.
 
@@ -91,11 +79,8 @@ void VulkanEngine::cleanup()
 		vkb::destroy_debug_utils_messenger(instance, debugMessenger);
 		vkDestroyInstance(instance, nullptr);
 
-		glfwDestroyWindow(window);
-		glfwTerminate();
+		SDL_DestroyWindow(window);
 	}
-
-	loadedEngine = nullptr;
 }
 
 void VulkanEngine::draw()
@@ -166,13 +151,42 @@ void VulkanEngine::draw()
 
 void VulkanEngine::run()
 {
+	SDL_Event e;
+	bool shouldQuit = false;
 
-	while (!glfwWindowShouldClose(window))
+	while (!shouldQuit)
 	{
-		glfwPollEvents();
+		while (SDL_PollEvent(&e) != 0)
+		{
+			if (e.type == SDL_QUIT)
+			{
+				shouldQuit = true;
+			}
+
+			if (e.type == SDL_WINDOWEVENT)
+			{
+				if (e.window.event == SDL_WINDOWEVENT_MINIMIZED)
+				{
+					stopRendering = true;
+				}
+				if (e.window.event == SDL_WINDOWEVENT_RESTORED)
+				{
+					stopRendering = false;
+				}
+			}
+
+			ImGui_ImplSDL2_ProcessEvent(&e);
+		}
+
+		if (stopRendering)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			continue;
+		}
 
 		ImGui_ImplVulkan_NewFrame();
-		ImGui_ImplGlfw_NewFrame();
+		ImGui_ImplSDL2_NewFrame();
+
 		ImGui::NewFrame();
 
 		if (ImGui::Begin("background"))
@@ -195,7 +209,6 @@ void VulkanEngine::run()
 
 		draw();
 	}
-
 }
 
 void VulkanEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function) const
@@ -236,7 +249,7 @@ void VulkanEngine::initVulkan()
 	instance = vkbInst.instance;
 	debugMessenger = vkbInst.debug_messenger;
 
-	VK_CHECK(glfwCreateWindowSurface(instance, window, nullptr, &surface));
+	SDL_Vulkan_CreateSurface(window, instance, &surface);
 
 	VkPhysicalDeviceVulkan13Features features
 	{
@@ -540,7 +553,7 @@ void VulkanEngine::initImgui()
 
 	ImGui::CreateContext();
 
-	ImGui_ImplGlfw_InitForVulkan(window, true);
+	ImGui_ImplSDL2_InitForVulkan(window);
 
 	VkPipelineRenderingCreateInfoKHR const imguiPipelineInfo
 	{
