@@ -158,6 +158,9 @@
     <None Include="shaders\glsl\colored_triangle.vert">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="shaders\glsl\colored_triangle_mesh.vert">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="lib\imgui\imgui.natvis" />
