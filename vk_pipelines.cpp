@@ -1,21 +1,41 @@
 #include "vk_pipelines.h"
 
+#include <fstream>
+
 #include "vk_initializers.h"
 
-VkShaderModule vkUtil::load_shader_module(uint32_t const* shaderCode, size_t const codeSize, VkDevice const device)
+bool vkUtil::load_shader_module(char const* filePath, VkDevice const device, VkShaderModule* outShaderModule)
 {
+	std::ifstream file(filePath, std::ios::ate | std::ios::binary);
+
+	if (!file.is_open())
+	{
+		return false;
+	}
+
+	size_t const fileSize = file.tellg();
+
+	std::vector<uint32_t> buffer(fileSize / sizeof(uint32_t));
+
+	file.seekg(0);
+	file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
+	file.close();
+
 	VkShaderModuleCreateInfo const createInfo
 	{
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 		.pNext = nullptr,
-		.codeSize = codeSize,
-		.pCode = shaderCode
+		.codeSize = buffer.size() * sizeof(uint32_t),
+		.pCode = buffer.data()
 	};
-
+	
 	VkShaderModule shaderModule;
-	VK_CHECK(vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule));
-
-	return shaderModule;
+	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule))
+	{
+		return false;
+	}
+	*outShaderModule = shaderModule;
+	return true;
 }
 
 void PipelineBuilder::clear()
@@ -69,6 +89,7 @@ VkPipeline PipelineBuilder::buildPipeline(VkDevice const device)
 		.stageCount = static_cast<uint32_t>(shaderStages.size()),
 		.pStages = shaderStages.data(),
 		.pVertexInputState = &vertexInputInfo,
+		.pInputAssemblyState = &inputAssembly,
 		.pViewportState = &viewportState,
 		.pRasterizationState = &rasterizer,
 		.pMultisampleState = &multisampling,

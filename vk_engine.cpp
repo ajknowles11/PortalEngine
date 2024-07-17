@@ -19,7 +19,7 @@
 #include <chrono>
 #include <thread>
 
-#include "shaders.h"
+#include "data_path.h"
 
 #ifdef _DEBUG
 bool constexpr bUseValidationLayers = true;
@@ -432,8 +432,16 @@ void VulkanEngine::initBackgroundPipelines()
 	};
 	VK_CHECK(vkCreatePipelineLayout(device, &computeLayout, nullptr, &gradientPipelineLayout));
 	
-	VkShaderModule const gradientShader = vkUtil::load_shader_module(shaders::gradientShader, shaders::gradientShaderSize, device);
-	VkShaderModule const skyShader = vkUtil::load_shader_module(shaders::skyShader, shaders::skyShaderSize, device);
+	VkShaderModule gradientShader;
+	if (!vkUtil::load_shader_module(data_path("shaders/gradient.comp.spv").c_str(), device, &gradientShader))
+	{
+		std::cerr << "Error loading gradient shader \n";
+	}
+	VkShaderModule skyShader;
+	if (!vkUtil::load_shader_module(data_path("shaders/sky.comp.spv").c_str(), device, &skyShader))
+	{
+		std::cerr << "Error loading sky shader \n";
+	}
 
 	VkPipelineShaderStageCreateInfo stageInfo
 	{
@@ -493,8 +501,17 @@ void VulkanEngine::initBackgroundPipelines()
 
 void VulkanEngine::initTrianglePipeline()
 {
-	VkShaderModule const triangleVertShader = vkUtil::load_shader_module(shaders::coloredTriangleVert, shaders::coloredTriangleVertSize, device);
-	VkShaderModule const triangleFragShader = vkUtil::load_shader_module(shaders::coloredTriangleFrag, shaders::coloredTriangleFragSize, device);
+	VkShaderModule triangleVertShader;
+	if (!vkUtil::load_shader_module(data_path("shaders/colored_triangle.vert.spv").c_str(), device, &triangleVertShader))
+	{
+		std::cerr << "Error loading triangle vertex shader module \n";
+	}
+
+	VkShaderModule triangleFragShader;
+	if (!vkUtil::load_shader_module(data_path("shaders/colored_triangle.frag.spv").c_str(), device, &triangleFragShader))
+	{
+		std::cerr << "Error loading triangle fragment shader module \n";
+	}
 
 	VkPipelineLayoutCreateInfo const pipelineLayoutInfo = vkInit::pipeline_layout_create_info();
 	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &trianglePipelineLayout));
@@ -583,8 +600,8 @@ void VulkanEngine::initImgui()
 
 	mainDeletionQueue.pushFunction([=, this]()
 	{
-		vkDestroyDescriptorPool(device, imguiPool, nullptr);
 		ImGui_ImplVulkan_Shutdown();
+		vkDestroyDescriptorPool(device, imguiPool, nullptr);
 	});
 }
 

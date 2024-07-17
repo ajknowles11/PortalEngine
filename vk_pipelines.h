@@ -6,7 +6,7 @@
 
 namespace vkUtil
 {
-	VkShaderModule load_shader_module(uint32_t const *shaderCode, size_t codeSize, VkDevice device);
+	bool load_shader_module(char const* filePath, VkDevice device, VkShaderModule* outShaderModule);
 }
 
 class PipelineBuilder
@@ -23,7 +23,7 @@ public:
 	VkPipelineRenderingCreateInfo renderInfo;
 	VkFormat colorAttachmentFormat;
 
-	PipelineBuilder() { clear(); };
+	PipelineBuilder() { clear(); }
 
 	void clear();
 
