@@ -3,6 +3,7 @@
 #pragma once
 
 #include "vk_descriptors.h"
+#include "vk_loader.h"
 #include "vk_types.h"
 
 unsigned int constexpr FRAME_OVERLAP = 2;
@@ -103,12 +104,16 @@ public:
 
 	GPUMeshBuffers rectangle;
 
+	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+
 	void init();
 	void cleanup();
 	void draw();
 	void run();
 
 	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function) const;
+
+	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices) const;
 
 private:
 
@@ -137,6 +142,4 @@ private:
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const;
 	void destroyBuffer(AllocatedBuffer const& buffer) const;
-
-	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices) const;
 };

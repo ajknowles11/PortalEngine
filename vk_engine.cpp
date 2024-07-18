@@ -599,6 +599,8 @@ void VulkanEngine::initMeshPipeline()
 
 void VulkanEngine::initDefaultData()
 {
+	testMeshes = load_gltf_meshes(this, data_path("assets/basicmesh.glb")).value();
+
 	std::array<Vertex, 4> rectVertices{};
 
 	rectVertices[0].position = { 0.5,-0.5, 0 };
@@ -784,6 +786,13 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd) const
 	vkCmdBindIndexBuffer(cmd, rectangle.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 	vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+
+	pushConstants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
+
+	vkCmdPushConstants(cmd, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+	vkCmdBindIndexBuffer(cmd, testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+	vkCmdDrawIndexed(cmd, testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
 
 	vkCmdEndRendering(cmd);
 }

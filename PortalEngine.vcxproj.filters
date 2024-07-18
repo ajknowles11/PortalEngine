@@ -22,6 +22,12 @@
     <Filter Include="Header Files\imgui">
       <UniqueIdentifier>{89a17b92-af64-484a-bfe1-3d905bbed089}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\fastgltf">
+      <UniqueIdentifier>{9b3d0a1d-4c58-490b-a971-f302ae6fc6ca}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\simdjson">
+      <UniqueIdentifier>{a2343ce4-dcab-43e0-ae54-4e775da2ef37}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -77,6 +83,18 @@
     </ClCompile>
     <ClCompile Include="data_path.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vk_loader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="lib\fastgltf\src\fastgltf.cpp">
+      <Filter>Source Files\fastgltf</Filter>
+    </ClCompile>
+    <ClCompile Include="lib\simdjson\simdjson.cpp">
+      <Filter>Source Files\simdjson</Filter>
+    </ClCompile>
+    <ClCompile Include="lib\fastgltf\src\base64.cpp">
+      <Filter>Source Files\fastgltf</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -141,6 +159,9 @@
       <Filter>Source Files\imgui</Filter>
     </ClInclude>
     <ClInclude Include="data_path.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vk_loader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
