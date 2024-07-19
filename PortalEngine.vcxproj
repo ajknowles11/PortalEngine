@@ -179,7 +179,6 @@
     <ClInclude Include="lib\imgui\imstb_rectpack.h" />
     <ClInclude Include="lib\imgui\imstb_textedit.h" />
     <ClInclude Include="lib\imgui\imstb_truetype.h" />
-    <ClInclude Include="shaders.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="VkBootstrap.h" />
     <ClInclude Include="VkBootstrapDispatch.h" />
@@ -198,6 +197,7 @@
     <None Include="shaders\glsl\colored_triangle_mesh.vert" />
     <None Include="shaders\glsl\gradient.comp" />
     <None Include="shaders\glsl\sky.comp" />
+    <None Include="shaders\glsl\tex_image.frag" />
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="lib\imgui\imgui.natvis" />

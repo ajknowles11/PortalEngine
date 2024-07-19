@@ -119,6 +119,16 @@ public:
 	GPUSceneData sceneData;
 	VkDescriptorSetLayout gpuSceneDataDescriptorLayout;
 
+	AllocatedImage whiteImage;
+	AllocatedImage blackImage;
+	AllocatedImage grayImage;
+	AllocatedImage errorCheckerboardImage;
+
+	VkSampler defaultSamplerLinear;
+	VkSampler defaultSamplerNearest;
+
+	VkDescriptorSetLayout singleImageDescriptorLayout;
+
 	void init();
 	void cleanup();
 	void draw();
@@ -155,4 +165,8 @@ private:
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const;
 	void destroyBuffer(AllocatedBuffer const& buffer) const;
+
+	AllocatedImage createImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+	AllocatedImage createImage(void const* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+	void destroyImage(AllocatedImage const& img) const;
 };

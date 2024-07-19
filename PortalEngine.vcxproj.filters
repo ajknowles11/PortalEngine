@@ -125,9 +125,6 @@
     <ClInclude Include="vk_pipelines.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="shaders.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="lib\imgui\imstb_textedit.h">
       <Filter>Header Files\imgui</Filter>
     </ClInclude>
@@ -180,6 +177,9 @@
       <Filter>Shader Files</Filter>
     </None>
     <None Include="shaders\glsl\colored_triangle_mesh.vert">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shaders\glsl\tex_image.frag">
       <Filter>Shader Files</Filter>
     </None>
   </ItemGroup>
