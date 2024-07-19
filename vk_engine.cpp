@@ -33,7 +33,7 @@ void VulkanEngine::init()
 {
 	SDL_Init(SDL_INIT_VIDEO);
 
-	SDL_WindowFlags windowFlags = static_cast<SDL_WindowFlags>(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+	SDL_WindowFlags constexpr windowFlags = static_cast<SDL_WindowFlags>(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 
 	window = SDL_CreateWindow(
 		windowTitle.c_str(),
@@ -102,13 +102,17 @@ void VulkanEngine::draw()
 	VK_CHECK(vkResetFences(device, 1, &getCurrentFrame().renderFence));
 
 	uint32_t swapchainImageIndex;
-	VK_CHECK(vkAcquireNextImageKHR(device, swapchain, 1000000000, getCurrentFrame().swapchainSemaphore, nullptr, &swapchainImageIndex));
+	if (VkResult const e = vkAcquireNextImageKHR(device, swapchain, 1000000000, getCurrentFrame().swapchainSemaphore, nullptr, &swapchainImageIndex); e == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		resizeRequested = true;
+		return;
+	}
 
 	VkCommandBuffer const cmd = getCurrentFrame().mainCommandBuffer;
 	VK_CHECK(vkResetCommandBuffer(cmd, 0));
 
-	drawExtent.width = drawImage.imageExtent.width;
-	drawExtent.height = drawImage.imageExtent.height;
+	drawExtent.width = static_cast<uint32_t>(static_cast<float>(std::min(swapchainExtent.width, drawImage.imageExtent.width)) * renderScale);
+	drawExtent.height = static_cast<uint32_t>(static_cast<float>(std::min(swapchainExtent.height, drawImage.imageExtent.height)) * renderScale);
 
 	VkCommandBufferBeginInfo const cmdBeginInfo = vkInit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
@@ -155,7 +159,10 @@ void VulkanEngine::draw()
 		.pImageIndices = &swapchainImageIndex
 	};
 
-	VK_CHECK(vkQueuePresentKHR(graphicsQueue, &presentInfo));
+	if (VkResult const presentResult = vkQueuePresentKHR(graphicsQueue, &presentInfo); presentResult == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		resizeRequested = true;
+	}
 
 	frameNumber++;
 }
@@ -195,6 +202,11 @@ void VulkanEngine::run()
 			continue;
 		}
 
+		if (resizeRequested)
+		{
+			resizeSwapchain();
+		}
+
 		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplSDL2_NewFrame();
 
@@ -202,6 +214,8 @@ void VulkanEngine::run()
 
 		if (ImGui::Begin("background"))
 		{
+			ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
+
 			ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
 
 			ImGui::Text("Selected effect: %s", selected.name.c_str());
@@ -561,7 +575,7 @@ void VulkanEngine::initMeshPipeline()
 	pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
 	pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
 	pipelineBuilder.setMultisamplingNone();
-	pipelineBuilder.disableBlending();
+	pipelineBuilder.enableBlendingAlphaBlend();
 	pipelineBuilder.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
 	pipelineBuilder.setColorAttachmentFormat(drawImage.imageFormat);
@@ -676,6 +690,22 @@ void VulkanEngine::destroySwapchain() const
 	{
 		vkDestroyImageView(device, swapchainImageViews[i], nullptr);
 	}
+}
+
+void VulkanEngine::resizeSwapchain()
+{
+	vkDeviceWaitIdle(device);
+
+	destroySwapchain();
+
+	int w, h;
+	SDL_GetWindowSize(window, &w, &h);
+	windowExtent.width = w;
+	windowExtent.height = h;
+
+	createSwapchain(windowExtent.width, windowExtent.height);
+
+	resizeRequested = false;
 }
 
 void VulkanEngine::drawBackground(VkCommandBuffer const cmd) const

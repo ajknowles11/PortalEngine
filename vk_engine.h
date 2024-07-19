@@ -74,10 +74,13 @@ public:
 	AllocatedImage drawImage;
 	AllocatedImage depthImage;
 	VkExtent2D drawExtent;
+	float renderScale = 1.0f;
 
 	std::vector<VkImage> swapchainImages;
 	std::vector<VkImageView> swapchainImageViews;
 	VkExtent2D swapchainExtent;
+
+	bool resizeRequested = false;
 
 	FrameData frames[FRAME_OVERLAP];
 
@@ -130,6 +133,7 @@ private:
 
 	void createSwapchain(uint32_t width, uint32_t height);
 	void destroySwapchain() const;
+	void resizeSwapchain();
 
 	void drawBackground(VkCommandBuffer cmd) const;
 	void drawGeometry(VkCommandBuffer cmd) const;

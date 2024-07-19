@@ -34,6 +34,8 @@ public:
 	void setPolygonMode(VkPolygonMode mode);
 	void setCullMode(VkCullModeFlags cullMode, VkFrontFace frontFace);
 	void setMultisamplingNone();
+	void enableBlendingAdditive();
+	void enableBlendingAlphaBlend();
 	void disableBlending();
 	void setColorAttachmentFormat(VkFormat format);
 	void setDepthFormat(VkFormat format);
