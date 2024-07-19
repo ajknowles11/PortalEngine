@@ -19,6 +19,8 @@
 #include <chrono>
 #include <thread>
 
+#include "glm/gtx/transform.hpp"
+
 #include "data_path.h"
 
 #ifdef _DEBUG
@@ -61,6 +63,13 @@ void VulkanEngine::cleanup()
 	if (isInitialized)
 	{
 		vkDeviceWaitIdle(device);
+
+		for (auto const& mesh : testMeshes)
+		{
+			destroyBuffer(mesh->meshBuffers.indexBuffer);
+			destroyBuffer(mesh->meshBuffers.vertexBuffer);
+		}
+
 		mainDeletionQueue.flush();
 
 		for (unsigned int i = 0; i < FRAME_OVERLAP; i++)
@@ -109,6 +118,7 @@ void VulkanEngine::draw()
 	drawBackground(cmd);
 	
 	vkUtil::transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	vkUtil::transition_image(cmd, depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	drawGeometry(cmd);
 
@@ -327,10 +337,26 @@ void VulkanEngine::initSwapchain()
 
 	VK_CHECK(vkCreateImageView(device, &imgViewCreateInfo, nullptr, &drawImage.imageView));
 
+	depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+	depthImage.imageExtent = drawImageExtent;
+	VkImageUsageFlags depthImageUsages{};
+	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+	VkImageCreateInfo const dImgCreateInfo = vkInit::image_create_info(depthImage.imageFormat, depthImageUsages, drawImageExtent);
+
+	vmaCreateImage(allocator, &dImgCreateInfo, &imgAllocInfo, &depthImage.image, &depthImage.allocation, nullptr);
+
+	VkImageViewCreateInfo const dImgViewCreateInfo = vkInit::image_view_create_info(depthImage.imageFormat, depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+	VK_CHECK(vkCreateImageView(device, &dImgViewCreateInfo, nullptr, &depthImage.imageView));
+
 	mainDeletionQueue.pushFunction([this]()
 	{
 		vkDestroyImageView(device, drawImage.imageView, nullptr);
 		vmaDestroyImage(allocator, drawImage.image, drawImage.allocation);
+
+		vkDestroyImageView(device, depthImage.imageView, nullptr);
+		vmaDestroyImage(allocator, depthImage.image, depthImage.allocation);
 	});
 }
 
@@ -410,7 +436,6 @@ void VulkanEngine::initDescriptors()
 void VulkanEngine::initPipelines()
 {
 	initBackgroundPipelines();
-	initTrianglePipeline();
 	initMeshPipeline();
 }
 
@@ -501,49 +526,6 @@ void VulkanEngine::initBackgroundPipelines()
 	});
 }
 
-void VulkanEngine::initTrianglePipeline()
-{
-	VkShaderModule triangleVertShader;
-	if (!vkUtil::load_shader_module(data_path("shaders/colored_triangle.vert.spv").c_str(), device, &triangleVertShader))
-	{
-		std::cerr << "Error loading triangle vertex shader module \n";
-	}
-
-	VkShaderModule triangleFragShader;
-	if (!vkUtil::load_shader_module(data_path("shaders/colored_triangle.frag.spv").c_str(), device, &triangleFragShader))
-	{
-		std::cerr << "Error loading triangle fragment shader module \n";
-	}
-
-	VkPipelineLayoutCreateInfo const pipelineLayoutInfo = vkInit::pipeline_layout_create_info();
-	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &trianglePipelineLayout));
-
-	PipelineBuilder pipelineBuilder;
-
-	pipelineBuilder.pipelineLayout = trianglePipelineLayout;
-	pipelineBuilder.setShaders(triangleVertShader, triangleFragShader);
-	pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-	pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
-	pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-	pipelineBuilder.setMultisamplingNone();
-	pipelineBuilder.disableBlending();
-	pipelineBuilder.disableDepthTest();
-
-	pipelineBuilder.setColorAttachmentFormat(drawImage.imageFormat);
-	pipelineBuilder.setDepthFormat(VK_FORMAT_UNDEFINED);
-
-	trianglePipeline = pipelineBuilder.buildPipeline(device);
-
-	vkDestroyShaderModule(device, triangleFragShader, nullptr);
-	vkDestroyShaderModule(device, triangleVertShader, nullptr);
-
-	mainDeletionQueue.pushFunction([&]()
-	{
-		vkDestroyPipelineLayout(device, trianglePipelineLayout, nullptr);
-		vkDestroyPipeline(device, trianglePipeline, nullptr);
-	});
-}
-
 void VulkanEngine::initMeshPipeline()
 {
 	VkShaderModule triangleVertShader;
@@ -580,10 +562,10 @@ void VulkanEngine::initMeshPipeline()
 	pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
 	pipelineBuilder.setMultisamplingNone();
 	pipelineBuilder.disableBlending();
-	pipelineBuilder.disableDepthTest();
+	pipelineBuilder.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
 	pipelineBuilder.setColorAttachmentFormat(drawImage.imageFormat);
-	pipelineBuilder.setDepthFormat(VK_FORMAT_UNDEFINED);
+	pipelineBuilder.setDepthFormat(depthImage.imageFormat);
 
 	meshPipeline = pipelineBuilder.buildPipeline(device);
 
@@ -600,36 +582,6 @@ void VulkanEngine::initMeshPipeline()
 void VulkanEngine::initDefaultData()
 {
 	testMeshes = load_gltf_meshes(this, data_path("assets/basicmesh.glb")).value();
-
-	std::array<Vertex, 4> rectVertices{};
-
-	rectVertices[0].position = { 0.5,-0.5, 0 };
-	rectVertices[1].position = { 0.5,0.5, 0 };
-	rectVertices[2].position = { -0.5,-0.5, 0 };
-	rectVertices[3].position = { -0.5,0.5, 0 };
-
-	rectVertices[0].color = { 0,0, 0,1 };
-	rectVertices[1].color = { 0.5,0.5,0.5 ,1 };
-	rectVertices[2].color = { 1,0, 0,1 };
-	rectVertices[3].color = { 0,1, 0,1 };
-
-	std::array<uint32_t, 6> rectIndices{};
-
-	rectIndices[0] = 0;
-	rectIndices[1] = 1;
-	rectIndices[2] = 2;
-
-	rectIndices[3] = 2;
-	rectIndices[4] = 1;
-	rectIndices[5] = 3;
-
-	rectangle = uploadMesh(rectIndices, rectVertices);
-	
-	mainDeletionQueue.pushFunction([&]() 
-		{
-			destroyBuffer(rectangle.indexBuffer);
-			destroyBuffer(rectangle.vertexBuffer);
-		});
 }
 
 void VulkanEngine::initImgui()
@@ -742,11 +694,12 @@ void VulkanEngine::drawBackground(VkCommandBuffer const cmd) const
 void VulkanEngine::drawGeometry(VkCommandBuffer const cmd) const
 {
 	VkRenderingAttachmentInfo const colorAttachment = vkInit::attachment_info(drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
+	VkRenderingAttachmentInfo const depthAttachment = vkInit::depth_attachment_info(depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-	VkRenderingInfo const renderInfo = vkInit::rendering_info(drawExtent, &colorAttachment, nullptr);
+	VkRenderingInfo const renderInfo = vkInit::rendering_info(windowExtent, &colorAttachment, &depthAttachment);
 	vkCmdBeginRendering(cmd, &renderInfo);
 
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
 
 	VkViewport const viewport
 	{
@@ -774,19 +727,13 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd) const
 	};
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-	vkCmdDraw(cmd, 3, 1, 0, 0);
-
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
-
 	GPUDrawPushConstants pushConstants{};
-	pushConstants.worldMatrix = glm::mat4{ 1.f };
-	pushConstants.vertexBuffer = rectangle.vertexBufferAddress;
 
-	vkCmdPushConstants(cmd, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
-	vkCmdBindIndexBuffer(cmd, rectangle.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+	glm::mat4 const view = glm::translate(glm::vec3{ 0,0,-5 });
+	glm::mat4 proj = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent.width) / static_cast<float>(drawExtent.height), 10000.0f, 0.1f);
+	proj[1][1] *= -1;
 
-	vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
-
+	pushConstants.worldMatrix = proj * view;
 	pushConstants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
 
 	vkCmdPushConstants(cmd, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);

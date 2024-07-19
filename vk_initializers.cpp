@@ -177,6 +177,28 @@ VkRenderingAttachmentInfo vkInit::attachment_info(VkImageView const view, VkClea
 	return colorAttachment;
 }
 
+VkRenderingAttachmentInfo vkInit::depth_attachment_info(VkImageView const view, VkImageLayout const layout)
+{
+	VkRenderingAttachmentInfo const depthAttachment
+	{
+		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+		.pNext = nullptr,
+		.imageView = view,
+		.imageLayout = layout,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.clearValue =
+		{
+			.depthStencil =
+			{
+				.depth = 0.0f
+			}
+		}
+	};
+
+	return depthAttachment;
+}
+
 VkRenderingInfo vkInit::rendering_info(VkExtent2D const renderExtent, VkRenderingAttachmentInfo const* colorAttachment,
 	VkRenderingAttachmentInfo const* depthAttachment)
 {

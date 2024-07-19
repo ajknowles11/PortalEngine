@@ -72,6 +72,7 @@ public:
 	VkFormat swapchainImageFormat;
 
 	AllocatedImage drawImage;
+	AllocatedImage depthImage;
 	VkExtent2D drawExtent;
 
 	std::vector<VkImage> swapchainImages;
@@ -96,13 +97,8 @@ public:
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBackgroundEffect = 0;
 
-	VkPipelineLayout trianglePipelineLayout;
-	VkPipeline trianglePipeline;
-
 	VkPipelineLayout meshPipelineLayout;
 	VkPipeline meshPipeline;
-
-	GPUMeshBuffers rectangle;
 
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
@@ -126,7 +122,6 @@ private:
 
 	void initPipelines();
 	void initBackgroundPipelines();
-	void initTrianglePipeline();
 	void initMeshPipeline();
 
 	void initDefaultData();

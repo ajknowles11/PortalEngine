@@ -6,9 +6,6 @@
 #include "vk_engine.h"
 #include "vk_initializers.h"
 #include "vk_types.h"
-#ifndef GLM_ENABLE_EXPERIMENTAL
-#define GLM_ENABLE_EXPERIMENTAL
-#endif
 #include <glm/gtx/quaternion.hpp>
 
 #include "fastgltf/glm_element_traits.hpp"
