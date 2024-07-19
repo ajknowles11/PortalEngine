@@ -17,6 +17,7 @@ struct FrameData
 	VkFence renderFence;
 
 	DeletionQueue deletionQueue;
+	DescriptorAllocatorGrowable frameDescriptors;
 };
 
 struct AllocatedImage {
@@ -41,6 +42,16 @@ struct ComputeEffect
 	VkPipeline pipeline;
 	VkPipelineLayout layout;
 	ComputePushConstants data;
+};
+
+struct GPUSceneData
+{
+	glm::mat4 view;
+	glm::mat4 proj;
+	glm::mat4 viewProj;
+	glm::vec4 ambientColor;
+	glm::vec4 sunlightDirection;
+	glm::vec4 sunlightColor;
 };
 
 class VulkanEngine
@@ -105,6 +116,9 @@ public:
 
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
+	GPUSceneData sceneData;
+	VkDescriptorSetLayout gpuSceneDataDescriptorLayout;
+
 	void init();
 	void cleanup();
 	void draw();
@@ -136,7 +150,7 @@ private:
 	void resizeSwapchain();
 
 	void drawBackground(VkCommandBuffer cmd) const;
-	void drawGeometry(VkCommandBuffer cmd) const;
+	void drawGeometry(VkCommandBuffer cmd);
 	void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const;

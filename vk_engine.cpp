@@ -98,6 +98,7 @@ void VulkanEngine::draw()
 	VK_CHECK(vkWaitForFences(device, 1, &getCurrentFrame().renderFence, true, 1000000000));
 
 	getCurrentFrame().deletionQueue.flush();
+	getCurrentFrame().frameDescriptors.clearPools(device);
 
 	VK_CHECK(vkResetFences(device, 1, &getCurrentFrame().renderFence));
 
@@ -422,29 +423,41 @@ void VulkanEngine::initDescriptors()
 
 	globalDescriptorAllocator.initPool(device, 10, sizes);
 
-	DescriptorLayoutBuilder builder;
-	builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-	drawImageDescriptorLayout = builder.build(device, VK_SHADER_STAGE_COMPUTE_BIT);
+	{
+		DescriptorLayoutBuilder builder;
+		builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		drawImageDescriptorLayout = builder.build(device, VK_SHADER_STAGE_COMPUTE_BIT);
+	}
+	{
+		DescriptorLayoutBuilder builder;
+		builder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		gpuSceneDataDescriptorLayout = builder.build(device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+	}
 
 	drawImageDescriptors = globalDescriptorAllocator.allocate(device, drawImageDescriptorLayout);
 
-	VkDescriptorImageInfo const imgInfo
-	{
-		.imageView = drawImage.imageView,
-		.imageLayout = VK_IMAGE_LAYOUT_GENERAL
-	};
+	DescriptorWriter writer;
+	writer.writeImage(0, drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 
-	VkWriteDescriptorSet const drawImageWrite
+	writer.updateSet(device, drawImageDescriptors);
+
+	for (uint32_t i = 0; i < FRAME_OVERLAP; i++)
 	{
-		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-		.pNext = nullptr,
-		.dstSet = drawImageDescriptors,
-		.dstBinding = 0,
-		.descriptorCount = 1,
-		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-		.pImageInfo = &imgInfo
-	};
-	vkUpdateDescriptorSets(device, 1, &drawImageWrite, 0, nullptr);
+		std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frameSizes = {
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
+		};
+
+		frames[i].frameDescriptors = DescriptorAllocatorGrowable{};
+		frames[i].frameDescriptors.init(device, 1000, frameSizes);
+
+		mainDeletionQueue.pushFunction([&, i]()
+		{
+			frames[i].frameDescriptors.destroyPools(device);
+		});
+	}
 }
 
 void VulkanEngine::initPipelines()
@@ -721,7 +734,7 @@ void VulkanEngine::drawBackground(VkCommandBuffer const cmd) const
 	vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(static_cast<float>(drawExtent.width) / 16.0f)), static_cast<uint32_t>(std::ceil(static_cast<float>(drawExtent.height) / 16.0f)), 1);
 }
 
-void VulkanEngine::drawGeometry(VkCommandBuffer const cmd) const
+void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 {
 	VkRenderingAttachmentInfo const colorAttachment = vkInit::attachment_info(drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
 	VkRenderingAttachmentInfo const depthAttachment = vkInit::depth_attachment_info(depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
@@ -756,6 +769,21 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd) const
 		}
 	};
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+	AllocatedBuffer const gpuSceneDataBuffer = createBuffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	getCurrentFrame().deletionQueue.pushFunction([=, this]()
+		{
+			destroyBuffer(gpuSceneDataBuffer);
+		});
+
+	GPUSceneData* sceneUniformData = static_cast<GPUSceneData*>(gpuSceneDataBuffer.allocation->GetMappedData());
+	*sceneUniformData = sceneData;
+
+	VkDescriptorSet globalDescriptor = getCurrentFrame().frameDescriptors.allocate(device, gpuSceneDataDescriptorLayout);
+
+	DescriptorWriter writer;
+	writer.writeBuffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+	writer.updateSet(device, globalDescriptor);
 
 	GPUDrawPushConstants pushConstants{};
 
