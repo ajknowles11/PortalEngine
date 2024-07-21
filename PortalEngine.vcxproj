@@ -202,6 +202,9 @@
     <None Include="shaders\glsl\colored_triangle.vert" />
     <None Include="shaders\glsl\colored_triangle_mesh.vert" />
     <None Include="shaders\glsl\gradient.comp" />
+    <None Include="shaders\glsl\input_structures.glsl" />
+    <None Include="shaders\glsl\mesh.frag" />
+    <None Include="shaders\glsl\mesh.vert" />
     <None Include="shaders\glsl\sky.comp" />
     <None Include="shaders\glsl\tex_image.frag" />
   </ItemGroup>

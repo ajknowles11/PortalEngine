@@ -44,14 +44,61 @@ struct ComputeEffect
 	ComputePushConstants data;
 };
 
-struct GPUSceneData
+struct RenderObject 
 {
-	glm::mat4 view;
-	glm::mat4 proj;
-	glm::mat4 viewProj;
-	glm::vec4 ambientColor;
-	glm::vec4 sunlightDirection;
-	glm::vec4 sunlightColor;
+	uint32_t indexCount;
+	uint32_t firstIndex;
+	VkBuffer indexBuffer;
+
+	MaterialInstance* material;
+
+	glm::mat4 transform;
+	VkDeviceAddress vertexBufferAddress;
+};
+
+struct DrawContext
+{
+	std::vector<RenderObject> OpaqueSurfaces;
+};
+
+struct MeshNode : public Node
+{
+	std::shared_ptr<MeshAsset> mesh;
+
+	virtual void draw(glm::mat4 const& topMatrix, DrawContext& ctx) override;
+};
+
+struct GLTFMetallic_Roughness
+{
+	MaterialPipeline opaquePipeline;
+	MaterialPipeline transparentPipeline;
+
+	VkDescriptorSetLayout materialLayout;
+
+	struct MaterialConstants 
+	{
+		glm::vec4 colorFactors;
+		glm::vec4 metal_rough_factors;
+
+		glm::vec4 extra[14];
+	};
+
+	struct MaterialResources
+	{
+		AllocatedImage colorImage;
+		VkSampler colorSampler;
+		AllocatedImage metalRoughImage;
+		VkSampler metalRoughSampler;
+		VkBuffer dataBuffer;
+		uint32_t dataBufferOffset;
+	};
+
+	DescriptorWriter writer;
+
+	void buildPipelines(VulkanEngine* engine);
+	void clearResources(VkDevice device);
+
+	MaterialInstance writeMaterial(VkDevice device, MaterialPass pass, MaterialResources const& resources, DescriptorAllocatorGrowable& descriptorAllocator);
 };
 
 class VulkanEngine
@@ -72,7 +119,7 @@ public:
 	VkDevice device;
 	VkSurfaceKHR surface;
 
-	DescriptorAllocator globalDescriptorAllocator;
+	DescriptorAllocatorGrowable globalDescriptorAllocator;
 
 	VkDescriptorSet drawImageDescriptors;
 	VkDescriptorSetLayout drawImageDescriptorLayout;
@@ -84,7 +131,7 @@ public:
 
 	AllocatedImage drawImage;
 	AllocatedImage depthImage;
-	VkExtent2D drawExtent;
+	VkExtent2D drawExtent = { 1, 1 };
 	float renderScale = 1.0f;
 
 	std::vector<VkImage> swapchainImages;
@@ -129,14 +176,31 @@ public:
 
 	VkDescriptorSetLayout singleImageDescriptorLayout;
 
+	MaterialInstance defaultData;
+	GLTFMetallic_Roughness metalRoughMaterial;
+
+	DrawContext mainDrawContext;
+	std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
+
 	void init();
 	void cleanup();
 	void draw();
+	void drawBackground(VkCommandBuffer cmd) const;
+	void drawGeometry(VkCommandBuffer cmd);
+	void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
+	void updateScene();
 	void run();
 
 	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function) const;
 
 	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices) const;
+
+	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const;
+	void destroyBuffer(AllocatedBuffer const& buffer) const;
+
+	AllocatedImage createImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+	AllocatedImage createImage(void const* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+	void destroyImage(AllocatedImage const& img) const;
 
 private:
 
@@ -158,15 +222,4 @@ private:
 	void createSwapchain(uint32_t width, uint32_t height);
 	void destroySwapchain() const;
 	void resizeSwapchain();
-
-	void drawBackground(VkCommandBuffer cmd) const;
-	void drawGeometry(VkCommandBuffer cmd);
-	void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
-
-	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const;
-	void destroyBuffer(AllocatedBuffer const& buffer) const;
-
-	AllocatedImage createImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
-	AllocatedImage createImage(void const* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
-	void destroyImage(AllocatedImage const& img) const;
 };

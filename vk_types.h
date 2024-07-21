@@ -76,3 +76,66 @@ struct GPUDrawPushConstants
 	glm::mat4 worldMatrix;
 	VkDeviceAddress vertexBuffer;
 };
+
+enum class MaterialPass :uint8_t
+{
+	MainColor,
+	Transparent,
+	Other
+};
+
+struct MaterialPipeline 
+{
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+};
+
+struct MaterialInstance 
+{
+	MaterialPipeline* pipeline;
+	VkDescriptorSet materialSet;
+	MaterialPass passType;
+};
+
+struct DrawContext;
+
+class IRenderable 
+{
+	virtual void draw(glm::mat4 const& topMatrix, DrawContext& ctx) = 0;
+};
+
+struct Node : public IRenderable
+{
+	std::weak_ptr<Node> parent;
+	std::vector<std::shared_ptr<Node>> children;
+
+	glm::mat4 localTransform;
+	glm::mat4 worldTransform;
+
+	void refreshTransform(glm::mat4 const& parentMatrix)
+	{
+		worldTransform = parentMatrix * localTransform;
+		for (auto c : children)
+		{
+			c->refreshTransform(worldTransform);
+		}
+	}
+
+	virtual void draw(glm::mat4 const& topMatrix, DrawContext& ctx)
+	{
+		for (auto& c : children)
+		{
+			c->draw(topMatrix, ctx);
+		}
+	}
+};
+
+struct GPUSceneData
+{
+	glm::mat4 view;
+	glm::mat4 proj;
+	glm::mat4 viewProj;
+	glm::vec4 ambientColor;
+	glm::vec4 sunlightDirection;
+	glm::vec4 sunlightColor;
+};

@@ -117,7 +117,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_gltf_meshes(VulkanEn
 		}
 
 		// display the vertex normals
-		if constexpr (constexpr bool overrideColors = true) {
+		if constexpr (constexpr bool overrideColors = false) {
 			for (Vertex& vtx : vertices) {
 				vtx.color = glm::vec4(vtx.normal, 1.f);
 			}
