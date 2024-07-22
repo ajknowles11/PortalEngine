@@ -119,6 +119,15 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	vkDestroyShaderModule(engine->device, meshFragShader, nullptr);
 }
 
+void GLTFMetallic_Roughness::clearResources(VkDevice device)
+{
+	vkDestroyDescriptorSetLayout(device, materialLayout, nullptr);
+	vkDestroyPipelineLayout(device, transparentPipeline.layout, nullptr);
+
+	vkDestroyPipeline(device, transparentPipeline.pipeline, nullptr);
+	vkDestroyPipeline(device, opaquePipeline.pipeline, nullptr);
+}
+
 MaterialInstance GLTFMetallic_Roughness::writeMaterial(VkDevice device, MaterialPass pass, MaterialResources const& resources, DescriptorAllocatorGrowable& descriptorAllocator)
 {
 	MaterialInstance matData;
@@ -179,14 +188,6 @@ void VulkanEngine::cleanup()
 	{
 		vkDeviceWaitIdle(device);
 
-		for (auto const& mesh : testMeshes)
-		{
-			destroyBuffer(mesh->meshBuffers.indexBuffer);
-			destroyBuffer(mesh->meshBuffers.vertexBuffer);
-		}
-
-		mainDeletionQueue.flush();
-
 		for (unsigned int i = 0; i < FRAME_OVERLAP; i++)
 		{
 			vkDestroyCommandPool(device, frames[i].commandPool, nullptr);
@@ -194,7 +195,19 @@ void VulkanEngine::cleanup()
 			vkDestroyFence(device, frames[i].renderFence, nullptr);
 			vkDestroySemaphore(device, frames[i].renderSemaphore, nullptr);
 			vkDestroySemaphore(device, frames[i].swapchainSemaphore, nullptr);
+
+			frames[i].deletionQueue.flush();
 		}
+
+		for (auto const& mesh : testMeshes)
+		{
+			destroyBuffer(mesh->meshBuffers.indexBuffer);
+			destroyBuffer(mesh->meshBuffers.vertexBuffer);
+		}
+
+		metalRoughMaterial.clearResources(device);
+
+		mainDeletionQueue.flush();
 
 		destroySwapchain();
 
@@ -701,60 +714,60 @@ void VulkanEngine::initBackgroundPipelines()
 	});
 }
 
-void VulkanEngine::initMeshPipeline()
-{
-	VkShaderModule triangleVertShader;
-	if (!vkUtil::load_shader_module(data_path("shaders/colored_triangle_mesh.vert.spv").c_str(), device, &triangleVertShader))
-	{
-		std::cerr << "Error loading triangle vertex shader module \n";
-	}
-
-	VkShaderModule triangleFragShader;
-	if (!vkUtil::load_shader_module(data_path("shaders/tex_image.frag.spv").c_str(), device, &triangleFragShader))
-	{
-		std::cerr << "Error loading triangle fragment shader module \n";
-	}
-
-	VkPushConstantRange constexpr bufferRange
-	{
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-		.offset = 0,
-		.size = sizeof(GPUDrawPushConstants)
-	};
-
-	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkInit::pipeline_layout_create_info();
-	pipelineLayoutInfo.pPushConstantRanges = &bufferRange;
-	pipelineLayoutInfo.pushConstantRangeCount = 1;
-	pipelineLayoutInfo.pSetLayouts = &singleImageDescriptorLayout;
-	pipelineLayoutInfo.setLayoutCount = 1;
-
-	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &meshPipelineLayout));
-
-	PipelineBuilder pipelineBuilder;
-
-	pipelineBuilder.pipelineLayout = meshPipelineLayout;
-	pipelineBuilder.setShaders(triangleVertShader, triangleFragShader);
-	pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-	pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
-	pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-	pipelineBuilder.setMultisamplingNone();
-	pipelineBuilder.enableBlendingAlphaBlend();
-	pipelineBuilder.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
-
-	pipelineBuilder.setColorAttachmentFormat(drawImage.imageFormat);
-	pipelineBuilder.setDepthFormat(depthImage.imageFormat);
-
-	meshPipeline = pipelineBuilder.buildPipeline(device);
-
-	vkDestroyShaderModule(device, triangleFragShader, nullptr);
-	vkDestroyShaderModule(device, triangleVertShader, nullptr);
-
-	mainDeletionQueue.pushFunction([&]()
-		{
-			vkDestroyPipelineLayout(device, meshPipelineLayout, nullptr);
-			vkDestroyPipeline(device, meshPipeline, nullptr);
-		});
-}
+//void VulkanEngine::initMeshPipeline()
+//{
+//	VkShaderModule triangleVertShader;
+//	if (!vkUtil::load_shader_module(data_path("shaders/colored_triangle_mesh.vert.spv").c_str(), device, &triangleVertShader))
+//	{
+//		std::cerr << "Error loading triangle vertex shader module \n";
+//	}
+//
+//	VkShaderModule triangleFragShader;
+//	if (!vkUtil::load_shader_module(data_path("shaders/tex_image.frag.spv").c_str(), device, &triangleFragShader))
+//	{
+//		std::cerr << "Error loading triangle fragment shader module \n";
+//	}
+//
+//	VkPushConstantRange constexpr bufferRange
+//	{
+//		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+//		.offset = 0,
+//		.size = sizeof(GPUDrawPushConstants)
+//	};
+//
+//	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkInit::pipeline_layout_create_info();
+//	pipelineLayoutInfo.pPushConstantRanges = &bufferRange;
+//	pipelineLayoutInfo.pushConstantRangeCount = 1;
+//	pipelineLayoutInfo.pSetLayouts = &singleImageDescriptorLayout;
+//	pipelineLayoutInfo.setLayoutCount = 1;
+//
+//	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &meshPipelineLayout));
+//
+//	PipelineBuilder pipelineBuilder;
+//
+//	pipelineBuilder.pipelineLayout = meshPipelineLayout;
+//	pipelineBuilder.setShaders(triangleVertShader, triangleFragShader);
+//	pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+//	pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
+//	pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+//	pipelineBuilder.setMultisamplingNone();
+//	pipelineBuilder.enableBlendingAlphaBlend();
+//	pipelineBuilder.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
+//
+//	pipelineBuilder.setColorAttachmentFormat(drawImage.imageFormat);
+//	pipelineBuilder.setDepthFormat(depthImage.imageFormat);
+//
+//	meshPipeline = pipelineBuilder.buildPipeline(device);
+//
+//	vkDestroyShaderModule(device, triangleFragShader, nullptr);
+//	vkDestroyShaderModule(device, triangleVertShader, nullptr);
+//
+//	mainDeletionQueue.pushFunction([&]()
+//		{
+//			vkDestroyPipelineLayout(device, meshPipelineLayout, nullptr);
+//			vkDestroyPipeline(device, meshPipeline, nullptr);
+//		});
+//}
 
 void VulkanEngine::initDefaultData()
 {

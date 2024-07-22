@@ -158,8 +158,8 @@ public:
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBackgroundEffect = 0;
 
-	VkPipelineLayout meshPipelineLayout;
-	VkPipeline meshPipeline;
+	//VkPipelineLayout meshPipelineLayout;
+	//VkPipeline meshPipeline;
 
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
@@ -213,7 +213,7 @@ private:
 
 	void initPipelines();
 	void initBackgroundPipelines();
-	void initMeshPipeline();
+	//void initMeshPipeline();
 
 	void initDefaultData();
 
