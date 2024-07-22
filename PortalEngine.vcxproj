@@ -150,6 +150,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="camera.cpp" />
     <ClCompile Include="data_path.cpp" />
     <ClCompile Include="lib\fastgltf\src\base64.cpp" />
     <ClCompile Include="lib\fastgltf\src\fastgltf.cpp" />
@@ -174,6 +175,7 @@
     <ClCompile Include="vk_types.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="camera.h" />
     <ClInclude Include="data_path.h" />
     <ClInclude Include="lib\imgui\imconfig.h" />
     <ClInclude Include="lib\imgui\imgui.h" />

@@ -1,6 +1,8 @@
-// Inspired heavily by vkbootstrap, but manually implemented for my own understanding.
+// Inspired heavily by vkguide, but manually implemented for my own understanding.
 
 #pragma once
+
+#include "camera.h"
 
 #include "vk_descriptors.h"
 #include "vk_loader.h"
@@ -105,6 +107,8 @@ class VulkanEngine
 {
 public:
 
+	Camera mainCamera;
+
 	bool isInitialized{ false };
 	int frameNumber{ 0 };
 	bool stopRendering{ false };
@@ -188,7 +192,7 @@ public:
 	void drawBackground(VkCommandBuffer cmd) const;
 	void drawGeometry(VkCommandBuffer cmd);
 	void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
-	void updateScene();
+	void updateScene(float delta);
 	void run();
 
 	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function) const;

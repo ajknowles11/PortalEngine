@@ -179,6 +179,11 @@ void VulkanEngine::init()
 	initDefaultData();
 	initImgui();
 
+	mainCamera.velocity = glm::vec3(0.0f);
+	mainCamera.position = glm::vec3(0, 0, 5);
+	mainCamera.pitch = 0;
+	mainCamera.yaw = 0;
+
 	isInitialized = true;
 }
 
@@ -223,8 +228,6 @@ void VulkanEngine::cleanup()
 
 void VulkanEngine::draw()
 {
-	updateScene();
-
 	VK_CHECK(vkWaitForFences(device, 1, &getCurrentFrame().renderFence, true, 1000000000));
 
 	getCurrentFrame().deletionQueue.flush();
@@ -298,7 +301,7 @@ void VulkanEngine::draw()
 	frameNumber++;
 }
 
-void VulkanEngine::updateScene()
+void VulkanEngine::updateScene(float delta)
 {
 	mainDrawContext.OpaqueSurfaces.clear();
 
@@ -312,10 +315,11 @@ void VulkanEngine::updateScene()
 		loadedNodes["Cube"]->draw(translation * scale, mainDrawContext);
 	}
 
-	sceneData.view = glm::translate(glm::vec3{ 0,0,-5 });
+	mainCamera.update(delta);
+	glm::mat4 const view = mainCamera.getViewMatrix();
 	sceneData.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent.width) / static_cast<float>(drawExtent.height), 10000.0f, 0.1f);
 	sceneData.proj[1][1] *= -1;
-	sceneData.viewProj = sceneData.proj * sceneData.view;
+	sceneData.viewProj = sceneData.proj * view;
 
 	sceneData.ambientColor = glm::vec4(0.1f);
 	sceneData.sunlightColor = glm::vec4(1.0f);
@@ -330,6 +334,13 @@ void VulkanEngine::run()
 
 	while (!shouldQuit)
 	{
+		auto const currentTime = std::chrono::high_resolution_clock::now();
+		static auto previousTime = currentTime;
+		float elapsed = std::chrono::duration<float>(currentTime - previousTime).count();
+		previousTime = currentTime;
+
+		elapsed = std::min(0.1f, elapsed);
+
 		while (SDL_PollEvent(&e) != 0)
 		{
 			if (e.type == SDL_QUIT)
@@ -339,6 +350,10 @@ void VulkanEngine::run()
 
 			if (e.type == SDL_WINDOWEVENT)
 			{
+				if (e.window.event == SDL_WINDOWEVENT_RESIZED)
+				{
+					resizeRequested = true;
+				}
 				if (e.window.event == SDL_WINDOWEVENT_MINIMIZED)
 				{
 					stopRendering = true;
@@ -348,6 +363,8 @@ void VulkanEngine::run()
 					stopRendering = false;
 				}
 			}
+
+			mainCamera.processSDLEvent(e);
 
 			ImGui_ImplSDL2_ProcessEvent(&e);
 		}
@@ -387,6 +404,8 @@ void VulkanEngine::run()
 		}
 
 		ImGui::Render();
+
+		updateScene(elapsed);
 
 		draw();
 	}
