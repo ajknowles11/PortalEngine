@@ -113,7 +113,7 @@ public:
 	int frameNumber{ 0 };
 	bool stopRendering{ false };
 	VkExtent2D windowExtent{ 1920, 1080 };
-	std::string windowTitle = "Black Hole-in-One";
+	std::string windowTitle = "Portal Engine";
 
 	struct SDL_Window* window{ nullptr };
 
