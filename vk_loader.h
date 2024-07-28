@@ -25,6 +25,30 @@ struct MeshAsset
 	GPUMeshBuffers meshBuffers;
 };
 
-class VulkanEngine;
+struct LoadedGLTF : public IRenderable
+{
+	std::unordered_map<std::string, std::shared_ptr<MeshAsset>> meshes;
+	std::unordered_map<std::string, std::shared_ptr<Node>> nodes;
+	std::unordered_map<std::string, AllocatedImage> images;
+	std::unordered_map<std::string, std::shared_ptr<GLTFMaterial>> materials;
 
-std::optional<std::vector<std::shared_ptr<MeshAsset>>> load_gltf_meshes(VulkanEngine* engine, std::filesystem::path const& filePath);
+	std::vector<std::shared_ptr<Node>> topNodes;
+
+	std::vector<VkSampler> samplers;
+
+	DescriptorAllocatorGrowable descriptorPool;
+
+	AllocatedBuffer materialDataBuffer;
+
+	VulkanEngine* creator;
+
+	~LoadedGLTF() { clearAll(); }
+
+	virtual void draw(glm::mat4 const& topMatrix, DrawContext& ctx);
+
+private:
+
+	void clearAll();
+};
+
+class VulkanEngine;
