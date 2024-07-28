@@ -10,24 +10,22 @@
 
 unsigned int constexpr FRAME_OVERLAP = 2;
 
-struct FrameData
+struct DeletionQueue
 {
-	VkCommandPool commandPool;
-	VkCommandBuffer mainCommandBuffer;
+	std::deque<std::function<void()>> deletors;
 
-	VkSemaphore swapchainSemaphore, renderSemaphore;
-	VkFence renderFence;
+	void pushFunction(std::function<void()>&& function) {
+		deletors.push_back(function);
+	}
 
-	DeletionQueue deletionQueue;
-	DescriptorAllocatorGrowable frameDescriptors;
-};
+	void flush() {
+		// reverse iterate the deletion queue to execute all the functions
+		for (auto it = deletors.rbegin(); it != deletors.rend(); ++it) {
+			(*it)(); //call functors
+		}
 
-struct AllocatedImage {
-	VkImage image;
-	VkImageView imageView;
-	VmaAllocation allocation;
-	VkExtent3D imageExtent;
-	VkFormat imageFormat;
+		deletors.clear();
+	}
 };
 
 struct ComputePushConstants
@@ -56,6 +54,18 @@ struct RenderObject
 
 	glm::mat4 transform;
 	VkDeviceAddress vertexBufferAddress;
+};
+
+struct FrameData
+{
+	VkCommandPool commandPool;
+	VkCommandBuffer mainCommandBuffer;
+
+	VkSemaphore swapchainSemaphore, renderSemaphore;
+	VkFence renderFence;
+
+	DeletionQueue deletionQueue;
+	DescriptorAllocatorGrowable frameDescriptors;
 };
 
 struct DrawContext
@@ -165,8 +175,6 @@ public:
 	//VkPipelineLayout meshPipelineLayout;
 	//VkPipeline meshPipeline;
 
-	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
-
 	GPUSceneData sceneData;
 	VkDescriptorSetLayout gpuSceneDataDescriptorLayout;
 
@@ -184,7 +192,8 @@ public:
 	GLTFMetallic_Roughness metalRoughMaterial;
 
 	DrawContext mainDrawContext;
-	std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
+
+	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
 
 	void init();
 	void cleanup();

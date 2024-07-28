@@ -3,7 +3,10 @@
 #include <unordered_map>
 #include <filesystem>
 
+#include "vk_descriptors.h"
 #include "vk_types.h"
+
+class VulkanEngine;
 
 struct GLTFMaterial
 {
@@ -42,13 +45,13 @@ struct LoadedGLTF : public IRenderable
 
 	VulkanEngine* creator;
 
-	~LoadedGLTF() { clearAll(); }
+	virtual ~LoadedGLTF() { clearAll(); }
 
-	virtual void draw(glm::mat4 const& topMatrix, DrawContext& ctx);
+	void draw(glm::mat4 const& topMatrix, DrawContext& ctx) override;
 
 private:
 
 	void clearAll();
 };
 
-class VulkanEngine;
+std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::string_view filePath);

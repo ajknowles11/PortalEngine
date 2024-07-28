@@ -179,12 +179,19 @@ void VulkanEngine::init()
 	initDefaultData();
 	initImgui();
 
+	isInitialized = true;
+
 	mainCamera.velocity = glm::vec3(0.0f);
-	mainCamera.position = glm::vec3(0, 0, 5);
+	mainCamera.position = glm::vec3(30, 0, -85);
 	mainCamera.pitch = 0;
 	mainCamera.yaw = 0;
 
-	isInitialized = true;
+	std::string const structurePath = { data_path("assets/structure.glb") };
+	auto const structureFile = load_gltf(this, structurePath);
+
+	assert(structureFile.has_value());
+
+	loadedScenes["structure"] = *structureFile;
 }
 
 void VulkanEngine::cleanup()
@@ -192,6 +199,8 @@ void VulkanEngine::cleanup()
 	if (isInitialized)
 	{
 		vkDeviceWaitIdle(device);
+
+		loadedScenes.clear();
 
 		for (unsigned int i = 0; i < FRAME_OVERLAP; i++)
 		{
@@ -202,12 +211,6 @@ void VulkanEngine::cleanup()
 			vkDestroySemaphore(device, frames[i].swapchainSemaphore, nullptr);
 
 			frames[i].deletionQueue.flush();
-		}
-
-		for (auto const& mesh : testMeshes)
-		{
-			destroyBuffer(mesh->meshBuffers.indexBuffer);
-			destroyBuffer(mesh->meshBuffers.vertexBuffer);
 		}
 
 		metalRoughMaterial.clearResources(device);
@@ -305,15 +308,7 @@ void VulkanEngine::updateScene(float delta)
 {
 	mainDrawContext.OpaqueSurfaces.clear();
 
-	loadedNodes["Suzanne"]->draw(glm::mat4{ 1.0f }, mainDrawContext);
-
-	for (int x = -3; x < 3; x++)
-	{
-		glm::mat4 scale = glm::scale(glm::vec3{ 0.2f });
-		glm::mat4 translation = glm::translate(glm::vec3{ x, 1, 0 });
-
-		loadedNodes["Cube"]->draw(translation * scale, mainDrawContext);
-	}
+	loadedScenes["structure"]->draw(glm::mat4{ 1.0f }, mainDrawContext);
 
 	mainCamera.update(delta);
 	glm::mat4 const view = mainCamera.getViewMatrix();
@@ -834,8 +829,6 @@ void VulkanEngine::initDefaultData()
 		destroyImage(errorCheckerboardImage);
 	});
 
-	testMeshes = load_gltf_meshes(this, data_path("assets/basicmesh.glb")).value();
-
 	GLTFMetallic_Roughness::MaterialResources materialResources;
 	materialResources.colorImage = whiteImage;
 	materialResources.colorSampler = defaultSamplerLinear;
@@ -857,22 +850,6 @@ void VulkanEngine::initDefaultData()
 	materialResources.dataBufferOffset = 0;
 
 	defaultData = metalRoughMaterial.writeMaterial(device, MaterialPass::MainColor, materialResources, globalDescriptorAllocator);
-
-	for (auto& m : testMeshes)
-	{
-		std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
-		newNode->mesh = m;
-
-		newNode->localTransform = glm::mat4{ 1.0f };
-		newNode->worldTransform = glm::mat4{ 1.0f };
-
-		for (auto& s : newNode->mesh->surfaces)
-		{
-			s.material = std::make_shared<GLTFMaterial>(defaultData);
-		}
-
-		loadedNodes[m->name] = std::move(newNode);
-	}
 }
 
 void VulkanEngine::initImgui()
