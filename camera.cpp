@@ -8,7 +8,7 @@ void Camera::update(float delta)
 	velocity.z = static_cast<float>(s_down - w_down);
 	velocity.x = static_cast<float>(d_down - a_down);
 	glm::mat4 cameraRotation = getRotationMatrix();
-	position += glm::vec3(cameraRotation * glm::vec4(velocity * 0.5f, 0.0f)) * delta;
+	position += glm::vec3(cameraRotation * glm::vec4(velocity * 5.0f, 0.0f)) * delta;
 }
 
 void Camera::processSDLEvent(SDL_Event& e)

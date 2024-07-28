@@ -307,6 +307,7 @@ void VulkanEngine::draw()
 void VulkanEngine::updateScene(float delta)
 {
 	mainDrawContext.OpaqueSurfaces.clear();
+	mainDrawContext.TransparentSurfaces.clear();
 
 	loadedScenes["structure"]->draw(glm::mat4{ 1.0f }, mainDrawContext);
 
@@ -632,6 +633,14 @@ void VulkanEngine::initDescriptors()
 			frames[i].frameDescriptors.destroyPools(device);
 		});
 	}
+
+	mainDeletionQueue.pushFunction([&]() 
+	{
+		vkDestroyDescriptorSetLayout(device, drawImageDescriptorLayout, nullptr);
+		vkDestroyDescriptorSetLayout(device, gpuSceneDataDescriptorLayout, nullptr);
+		vkDestroyDescriptorSetLayout(device, singleImageDescriptorLayout, nullptr);
+		globalDescriptorAllocator.destroyPools(device);
+	});
 }
 
 void VulkanEngine::initPipelines()
@@ -723,65 +732,10 @@ void VulkanEngine::initBackgroundPipelines()
 	mainDeletionQueue.pushFunction([&]()
 	{
 		vkDestroyPipelineLayout(device, gradientPipelineLayout, nullptr);
-		vkDestroyPipeline(device, sky.pipeline, nullptr);
-		vkDestroyPipeline(device, gradient.pipeline, nullptr);
+		vkDestroyPipeline(device, backgroundEffects[0].pipeline, nullptr);
+		vkDestroyPipeline(device, backgroundEffects[1].pipeline, nullptr);
 	});
 }
-
-//void VulkanEngine::initMeshPipeline()
-//{
-//	VkShaderModule triangleVertShader;
-//	if (!vkUtil::load_shader_module(data_path("shaders/colored_triangle_mesh.vert.spv").c_str(), device, &triangleVertShader))
-//	{
-//		std::cerr << "Error loading triangle vertex shader module \n";
-//	}
-//
-//	VkShaderModule triangleFragShader;
-//	if (!vkUtil::load_shader_module(data_path("shaders/tex_image.frag.spv").c_str(), device, &triangleFragShader))
-//	{
-//		std::cerr << "Error loading triangle fragment shader module \n";
-//	}
-//
-//	VkPushConstantRange constexpr bufferRange
-//	{
-//		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-//		.offset = 0,
-//		.size = sizeof(GPUDrawPushConstants)
-//	};
-//
-//	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkInit::pipeline_layout_create_info();
-//	pipelineLayoutInfo.pPushConstantRanges = &bufferRange;
-//	pipelineLayoutInfo.pushConstantRangeCount = 1;
-//	pipelineLayoutInfo.pSetLayouts = &singleImageDescriptorLayout;
-//	pipelineLayoutInfo.setLayoutCount = 1;
-//
-//	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &meshPipelineLayout));
-//
-//	PipelineBuilder pipelineBuilder;
-//
-//	pipelineBuilder.pipelineLayout = meshPipelineLayout;
-//	pipelineBuilder.setShaders(triangleVertShader, triangleFragShader);
-//	pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-//	pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
-//	pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-//	pipelineBuilder.setMultisamplingNone();
-//	pipelineBuilder.enableBlendingAlphaBlend();
-//	pipelineBuilder.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
-//
-//	pipelineBuilder.setColorAttachmentFormat(drawImage.imageFormat);
-//	pipelineBuilder.setDepthFormat(depthImage.imageFormat);
-//
-//	meshPipeline = pipelineBuilder.buildPipeline(device);
-//
-//	vkDestroyShaderModule(device, triangleFragShader, nullptr);
-//	vkDestroyShaderModule(device, triangleVertShader, nullptr);
-//
-//	mainDeletionQueue.pushFunction([&]()
-//		{
-//			vkDestroyPipelineLayout(device, meshPipelineLayout, nullptr);
-//			vkDestroyPipeline(device, meshPipeline, nullptr);
-//		});
-//}
 
 void VulkanEngine::initDefaultData()
 {
@@ -1024,7 +978,7 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	writer.writeBuffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 	writer.updateSet(device, globalDescriptor);
 
-	for (RenderObject const& draw : mainDrawContext.OpaqueSurfaces)
+	auto draw = [&](RenderObject const& draw)
 	{
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
@@ -1038,6 +992,15 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 		vkCmdPushConstants(cmd, draw.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
 		vkCmdDrawIndexed(cmd, draw.indexCount, 1, draw.firstIndex, 0, 0);
+	};
+
+	for (auto r : mainDrawContext.OpaqueSurfaces)
+	{
+		draw(r);
+	}
+	for (auto r : mainDrawContext.TransparentSurfaces)
+	{
+		draw(r);
 	}
 
 	vkCmdEndRendering(cmd);

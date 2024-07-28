@@ -71,6 +71,7 @@ struct FrameData
 struct DrawContext
 {
 	std::vector<RenderObject> OpaqueSurfaces;
+	std::vector<RenderObject> TransparentSurfaces;
 };
 
 struct MeshNode : public Node
@@ -171,9 +172,6 @@ public:
 
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBackgroundEffect = 0;
-
-	//VkPipelineLayout meshPipelineLayout;
-	//VkPipeline meshPipeline;
 
 	GPUSceneData sceneData;
 	VkDescriptorSetLayout gpuSceneDataDescriptorLayout;

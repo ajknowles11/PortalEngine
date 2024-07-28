@@ -2,6 +2,9 @@
 
 #include "vk_initializers.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 void vkUtil::transition_image(VkCommandBuffer const cmd, VkImage const image, VkImageLayout const currentLayout, VkImageLayout const newLayout)
 {
 	VkImageMemoryBarrier2 imageBarrier

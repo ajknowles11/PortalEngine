@@ -164,7 +164,6 @@
     <ClCompile Include="lib\imgui\imgui_widgets.cpp" />
     <ClCompile Include="lib\simdjson\simdjson.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="stb_image.cpp" />
     <ClCompile Include="VkBootstrap.cpp" />
     <ClCompile Include="vk_descriptors.cpp" />
     <ClCompile Include="vk_engine.cpp" />
