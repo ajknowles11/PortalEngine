@@ -30,11 +30,52 @@ bool constexpr bUseValidationLayers = true;
 bool constexpr bUseValidationLayers = false;
 #endif
 
+bool is_visible(const RenderObject& obj, const glm::mat4& viewProj) {
+	std::array<glm::vec3, 8> const corners
+	{
+		glm::vec3 { 1, 1, 1 },
+		glm::vec3 { 1, 1, -1 },
+		glm::vec3 { 1, -1, 1 },
+		glm::vec3 { 1, -1, -1 },
+		glm::vec3 { -1, 1, 1 },
+		glm::vec3 { -1, 1, -1 },
+		glm::vec3 { -1, -1, 1 },
+		glm::vec3 { -1, -1, -1 },
+	};
+
+	glm::mat4 const matrix = viewProj * obj.transform;
+
+	glm::vec3 min = { 1.5, 1.5, 1.5 };
+	glm::vec3 max = { -1.5, -1.5, -1.5 };
+
+	for (int c = 0; c < 8; c++) {
+		// project each corner into clip space
+		glm::vec4 v = matrix * glm::vec4(obj.bounds.origin + (corners[c] * obj.bounds.extents), 1.f);
+
+		// perspective correction
+		v.x = v.x / v.w;
+		v.y = v.y / v.w;
+		v.z = v.z / v.w;
+
+		min = glm::min(glm::vec3{ v.x, v.y, v.z }, min);
+		max = glm::max(glm::vec3{ v.x, v.y, v.z }, max);
+	}
+
+	// check the clip space box is within the view
+	if (min.z > 1.f || max.z < 0.f || min.x > 1.f || max.x < -1.f || min.y > 1.f || max.y < -1.f) {
+		return false;
+	}
+	else {
+		return true;
+	}
+}
+
+
 void MeshNode::draw(glm::mat4 const& topMatrix, DrawContext& ctx)
 {
-	glm::mat4 nodeMatrix = topMatrix * worldTransform;
+	glm::mat4 const nodeMatrix = topMatrix * worldTransform;
 
-	for (auto& s : mesh->surfaces)
+	for (auto const& s : mesh->surfaces)
 	{
 		RenderObject def
 		{
@@ -42,12 +83,19 @@ void MeshNode::draw(glm::mat4 const& topMatrix, DrawContext& ctx)
 			.firstIndex = s.startIndex,
 			.indexBuffer = mesh->meshBuffers.indexBuffer.buffer,
 			.material = &s.material->data,
-
+			.bounds = s.bounds,
 			.transform = nodeMatrix,
 			.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress
 		};
 
-		ctx.OpaqueSurfaces.push_back(def);
+		if (s.material->data.passType == MaterialPass::Transparent)
+		{
+			ctx.TransparentSurfaces.push_back(def);
+		}
+		else
+		{
+			ctx.OpaqueSurfaces.push_back(def);
+		}
 	}
 
 	Node::draw(topMatrix, ctx);
@@ -959,37 +1007,37 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	stats.triangleCount = 0;
 	auto const start = std::chrono::high_resolution_clock::now();
 
+	std::vector<uint32_t> opaqueDraws;
+	opaqueDraws.reserve(mainDrawContext.OpaqueSurfaces.size());
+
+	for (uint32_t i = 0; i < mainDrawContext.OpaqueSurfaces.size(); i++) 
+	{
+		if (is_visible(mainDrawContext.OpaqueSurfaces[i], sceneData.viewProj))
+		{
+			opaqueDraws.push_back(i);
+		}
+	}
+
+	// sort the opaque surfaces by material and mesh
+	std::ranges::sort(opaqueDraws, [&](const auto& iA, const auto& iB) 
+	{
+		const RenderObject& A = mainDrawContext.OpaqueSurfaces[iA];
+		const RenderObject& B = mainDrawContext.OpaqueSurfaces[iB];
+		if (A.material == B.material) 
+		{
+			return A.indexBuffer < B.indexBuffer;
+		}
+		else 
+		{
+			return A.material < B.material;
+		}
+	});
+
 	VkRenderingAttachmentInfo const colorAttachment = vkInit::attachment_info(drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
 	VkRenderingAttachmentInfo const depthAttachment = vkInit::depth_attachment_info(depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	VkRenderingInfo const renderInfo = vkInit::rendering_info(windowExtent, &colorAttachment, &depthAttachment);
 	vkCmdBeginRendering(cmd, &renderInfo);
-
-	VkViewport const viewport
-	{
-		.x = 0.0f,
-		.y = 0.0f,
-		.width = static_cast<float>(drawExtent.width),
-		.height = static_cast<float>(drawExtent.height),
-		.minDepth = 0.0f,
-		.maxDepth = 1.0f
-	};
-	vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-	VkRect2D const scissor
-	{
-		.offset
-		{
-			.x = 0,
-			.y = 0
-		},
-		.extent
-		{
-			.width = drawExtent.width,
-			.height = drawExtent.height
-		}
-	};
-	vkCmdSetScissor(cmd, 0, 1, &scissor);
 
 	AllocatedBuffer const gpuSceneDataBuffer = createBuffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 	getCurrentFrame().deletionQueue.pushFunction([=, this]()
@@ -1006,28 +1054,71 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	writer.writeBuffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 	writer.updateSet(device, globalDescriptor);
 
+	MaterialPipeline* lastPipeline = nullptr;
+	MaterialInstance* lastMaterial = nullptr;
+	VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
+
 	auto draw = [&](RenderObject const& object)
 	{
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline->pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline->layout, 1, 1, &object.material->materialSet, 0, nullptr);
+		if (object.material != lastMaterial)
+		{
+			lastMaterial = object.material;
+			if (object.material->pipeline != lastPipeline)
+			{
+				lastPipeline = object.material->pipeline;
+				vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline->pipeline);
+				vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
 
-		vkCmdBindIndexBuffer(cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+				VkViewport const viewport
+				{
+					.x = 0.0f,
+					.y = 0.0f,
+					.width = static_cast<float>(drawExtent.width),
+					.height = static_cast<float>(drawExtent.height),
+					.minDepth = 0.0f,
+					.maxDepth = 1.0f
+				};
+				vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+				VkRect2D const scissor
+				{
+					.offset
+					{
+						.x = 0,
+						.y = 0
+					},
+					.extent
+					{
+						.width = drawExtent.width,
+						.height = drawExtent.height
+					}
+				};
+				vkCmdSetScissor(cmd, 0, 1, &scissor);
+			}
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline->layout, 1, 1, &object.material->materialSet, 0, nullptr);
+		}
+
+		if (object.indexBuffer != lastIndexBuffer)
+		{
+			lastIndexBuffer = object.indexBuffer;
+			vkCmdBindIndexBuffer(cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		}
 
 		GPUDrawPushConstants pushConstants{};
-		pushConstants.vertexBuffer = object.vertexBufferAddress;
 		pushConstants.worldMatrix = object.transform;
+		pushConstants.vertexBuffer = object.vertexBufferAddress;
+
 		vkCmdPushConstants(cmd, object.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
 		vkCmdDrawIndexed(cmd, object.indexCount, 1, object.firstIndex, 0, 0);
 
 		stats.drawCallCount++;
-		stats.triangleCount += object.indexCount / 3u;
+		stats.triangleCount += static_cast<int>(object.indexCount) / 3;
 	};
 
-	for (auto r : mainDrawContext.OpaqueSurfaces)
+	for (auto r : opaqueDraws)
 	{
-		draw(r);
+		draw(mainDrawContext.OpaqueSurfaces[r]);
 	}
 	for (auto r : mainDrawContext.TransparentSurfaces)
 	{
