@@ -86,7 +86,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::A
 							};
 
 							newImage = engine->createImage(data, imageSize, VK_FORMAT_R8G8B8A8_UNORM,
-								VK_IMAGE_USAGE_SAMPLED_BIT,false);
+								VK_IMAGE_USAGE_SAMPLED_BIT, true);
 
 							stbi_image_free(data);
 						}
