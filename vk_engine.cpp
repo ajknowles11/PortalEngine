@@ -17,6 +17,7 @@
 #include "vk_mem_alloc.h"
 
 #include <chrono>
+#include <iostream>
 #include <thread>
 
 #include "glm/gtx/transform.hpp"
@@ -130,7 +131,7 @@ void GLTFMetallic_Roughness::clearResources(VkDevice device)
 
 MaterialInstance GLTFMetallic_Roughness::writeMaterial(VkDevice device, MaterialPass pass, MaterialResources const& resources, DescriptorAllocatorGrowable& descriptorAllocator)
 {
-	MaterialInstance matData;
+	MaterialInstance matData{};
 	matData.passType = pass;
 	if (pass == MaterialPass::Transparent)
 	{
@@ -304,8 +305,10 @@ void VulkanEngine::draw()
 	frameNumber++;
 }
 
-void VulkanEngine::updateScene(float delta)
+void VulkanEngine::updateScene(float const delta)
 {
+	auto const start = std::chrono::high_resolution_clock::now();
+
 	mainDrawContext.OpaqueSurfaces.clear();
 	mainDrawContext.TransparentSurfaces.clear();
 
@@ -320,7 +323,10 @@ void VulkanEngine::updateScene(float delta)
 	sceneData.ambientColor = glm::vec4(0.1f);
 	sceneData.sunlightColor = glm::vec4(1.0f);
 	sceneData.sunlightDirection = glm::vec4(0, 1, 0.5f, 1.0f);
-	
+
+	auto const end = std::chrono::high_resolution_clock::now();
+	auto const elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+	stats.meshDrawTime = static_cast<float>(elapsed.count()) / 1000.0f;
 }
 
 void VulkanEngine::run()
@@ -328,14 +334,20 @@ void VulkanEngine::run()
 	SDL_Event e;
 	bool shouldQuit = false;
 
+	auto currentTime = std::chrono::high_resolution_clock::now();
+	auto previousTime = std::chrono::high_resolution_clock::now();
+
 	while (!shouldQuit)
 	{
-		auto const currentTime = std::chrono::high_resolution_clock::now();
-		static auto previousTime = currentTime;
-		float elapsed = std::chrono::duration<float>(currentTime - previousTime).count();
 		previousTime = currentTime;
+		currentTime = std::chrono::high_resolution_clock::now();
+		float elapsed = std::chrono::duration<float>(currentTime - previousTime).count();
 
 		elapsed = std::min(0.1f, elapsed);
+		auto const elapsedMs = std::chrono::duration_cast<std::chrono::microseconds>(currentTime - previousTime);
+
+		stats.fps = 1.0f / elapsed;
+		stats.frameTime = static_cast<float>(elapsedMs.count()) / 1000.0f;
 
 		while (SDL_PollEvent(&e) != 0)
 		{
@@ -380,6 +392,18 @@ void VulkanEngine::run()
 		ImGui_ImplSDL2_NewFrame();
 
 		ImGui::NewFrame();
+
+		ImGui::Begin("Stats");
+
+
+		ImGui::Text("%f fps", static_cast<double>(stats.fps));
+		ImGui::Text("frame time %f ms", static_cast<double>(stats.frameTime));
+		ImGui::Text("draw time %f ms", static_cast<double>(stats.meshDrawTime));
+		ImGui::Text("update time %f ms", static_cast<double>(stats.sceneUpdateTime));
+		ImGui::Text("triangles %i", stats.triangleCount);
+		ImGui::Text("draws %i", stats.drawCallCount);
+
+		ImGui::End();
 
 		if (ImGui::Begin("background"))
 		{
@@ -931,6 +955,10 @@ void VulkanEngine::drawBackground(VkCommandBuffer const cmd) const
 
 void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 {
+	stats.drawCallCount = 0;
+	stats.triangleCount = 0;
+	auto const start = std::chrono::high_resolution_clock::now();
+
 	VkRenderingAttachmentInfo const colorAttachment = vkInit::attachment_info(drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
 	VkRenderingAttachmentInfo const depthAttachment = vkInit::depth_attachment_info(depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
@@ -978,20 +1006,23 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	writer.writeBuffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 	writer.updateSet(device, globalDescriptor);
 
-	auto draw = [&](RenderObject const& draw)
+	auto draw = [&](RenderObject const& object)
 	{
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 1, 1, &draw.material->materialSet, 0, nullptr);
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline->pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline->layout, 1, 1, &object.material->materialSet, 0, nullptr);
 
-		vkCmdBindIndexBuffer(cmd, draw.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindIndexBuffer(cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-		GPUDrawPushConstants pushConstants;
-		pushConstants.vertexBuffer = draw.vertexBufferAddress;
-		pushConstants.worldMatrix = draw.transform;
-		vkCmdPushConstants(cmd, draw.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+		GPUDrawPushConstants pushConstants{};
+		pushConstants.vertexBuffer = object.vertexBufferAddress;
+		pushConstants.worldMatrix = object.transform;
+		vkCmdPushConstants(cmd, object.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
-		vkCmdDrawIndexed(cmd, draw.indexCount, 1, draw.firstIndex, 0, 0);
+		vkCmdDrawIndexed(cmd, object.indexCount, 1, object.firstIndex, 0, 0);
+
+		stats.drawCallCount++;
+		stats.triangleCount += object.indexCount / 3u;
 	};
 
 	for (auto r : mainDrawContext.OpaqueSurfaces)
@@ -1004,6 +1035,10 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	}
 
 	vkCmdEndRendering(cmd);
+
+	auto const end = std::chrono::high_resolution_clock::now();
+	auto const elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+	stats.meshDrawTime = static_cast<float>(elapsed.count()) / 1000.0f;
 }
 
 void VulkanEngine::drawImgui(VkCommandBuffer const cmd, VkImageView const targetImageView) const

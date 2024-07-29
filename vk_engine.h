@@ -114,11 +114,22 @@ struct GLTFMetallic_Roughness
 	MaterialInstance writeMaterial(VkDevice device, MaterialPass pass, MaterialResources const& resources, DescriptorAllocatorGrowable& descriptorAllocator);
 };
 
+struct EngineStats
+{
+	float fps;
+	float frameTime;
+	int triangleCount;
+	int drawCallCount;
+	float sceneUpdateTime;
+	float meshDrawTime;
+};
+
 class VulkanEngine
 {
 public:
 
 	Camera mainCamera;
+	EngineStats stats;
 
 	bool isInitialized{ false };
 	int frameNumber{ 0 };

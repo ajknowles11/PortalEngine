@@ -1,8 +1,10 @@
 #include "vk_pipelines.h"
 
+#include <iostream>
 #include <fstream>
 
 #include "vk_initializers.h"
+
 
 bool vkUtil::load_shader_module(char const* filePath, VkDevice const device, VkShaderModule* outShaderModule)
 {
