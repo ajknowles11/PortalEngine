@@ -3,6 +3,12 @@
 #include "vk_types.h"
 #include "SDL_events.h"
 
+struct Button
+{
+	bool pressed{};
+	int downs{};
+};
+
 class Camera
 {
 public:
@@ -18,8 +24,5 @@ public:
 
 	void update(float delta);
 private:
-	bool w_down;
-	bool s_down;
-	bool a_down;
-	bool d_down;
+	Button wKey, sKey, aKey, dKey, qKey, eKey, shiftKey, rightClick;
 };
