@@ -129,6 +129,16 @@ class VulkanEngine
 public:
 
 	Camera mainCamera;
+	Camera freeCamera;
+
+	enum CameraMode : int
+	{
+		Default,    // Default
+		Free,       // Control free cam, culling controlled by main cam
+		Detached    // Control main cam but view from free cam
+	} cameraMode = Default;
+
+
 	EngineStats stats;
 
 	bool isInitialized{ false };

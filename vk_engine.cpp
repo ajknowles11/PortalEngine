@@ -235,6 +235,8 @@ void VulkanEngine::init()
 	mainCamera.pitch = 0;
 	mainCamera.yaw = 0;
 
+	freeCamera = mainCamera;
+
 	std::string const structurePath = { data_path("assets/structure.glb") };
 	auto const structureFile = load_gltf(this, structurePath);
 
@@ -363,10 +365,20 @@ void VulkanEngine::updateScene(float const delta)
 	loadedScenes["structure"]->draw(glm::mat4{ 1.0f }, mainDrawContext);
 
 	mainCamera.update(delta);
-	glm::mat4 const view = mainCamera.getViewMatrix();
+	freeCamera.update(delta);
+	glm::mat4 const mainCamView = mainCamera.getViewMatrix();
+	if (cameraMode == Default)
+	{
+		sceneData.view = mainCamView;
+	}
+	else
+	{
+		sceneData.view = freeCamera.getViewMatrix();
+	}
 	sceneData.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent.width) / static_cast<float>(drawExtent.height), 10000.0f, 0.1f);
 	sceneData.proj[1][1] *= -1;
-	sceneData.viewProj = sceneData.proj * view;
+	sceneData.viewProj = sceneData.proj * sceneData.view;
+	sceneData.cullViewProj = sceneData.proj * mainCamView;
 
 	sceneData.ambientColor = glm::vec4(0.1f);
 	sceneData.sunlightColor = glm::vec4(1.0f);
@@ -420,7 +432,14 @@ void VulkanEngine::run()
 				}
 			}
 
-			mainCamera.processSDLEvent(e);
+			if (cameraMode == Default || cameraMode == Detached)
+			{
+				mainCamera.processSDLEvent(e);
+			}
+			else
+			{
+				freeCamera.processSDLEvent(e);
+			}
 
 			ImGui_ImplSDL2_ProcessEvent(&e);
 		}
@@ -441,19 +460,19 @@ void VulkanEngine::run()
 
 		ImGui::NewFrame();
 
-		ImGui::Begin("Stats");
+		if (ImGui::Begin("Stats"))
+		{
+			ImGui::Text("%f fps", static_cast<double>(stats.fps));
+			ImGui::Text("frame time %f ms", static_cast<double>(stats.frameTime));
+			ImGui::Text("draw time %f ms", static_cast<double>(stats.meshDrawTime));
+			ImGui::Text("update time %f ms", static_cast<double>(stats.sceneUpdateTime));
+			ImGui::Text("triangles %i", stats.triangleCount);
+			ImGui::Text("draws %i", stats.drawCallCount);
 
+			ImGui::End();
+		}
 
-		ImGui::Text("%f fps", static_cast<double>(stats.fps));
-		ImGui::Text("frame time %f ms", static_cast<double>(stats.frameTime));
-		ImGui::Text("draw time %f ms", static_cast<double>(stats.meshDrawTime));
-		ImGui::Text("update time %f ms", static_cast<double>(stats.sceneUpdateTime));
-		ImGui::Text("triangles %i", stats.triangleCount);
-		ImGui::Text("draws %i", stats.drawCallCount);
-
-		ImGui::End();
-
-		if (ImGui::Begin("background"))
+		if (ImGui::Begin("Background"))
 		{
 			ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
 
@@ -467,6 +486,21 @@ void VulkanEngine::run()
 			ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
 			ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
 			ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
+
+			ImGui::End();
+		}
+
+		if (ImGui::Begin("Camera"))
+		{
+			int camModeInt = cameraMode;
+			ImGui::SliderInt("Camera Mode", &camModeInt, 0, 2);
+			std::string const modeNames[] = {"Default", "Free", "Detached"};
+			ImGui::Text("Selected mode: %s", modeNames[camModeInt].c_str());
+			cameraMode = static_cast<CameraMode>(camModeInt);
+			if (ImGui::Button("Reset Free Cam View"))
+			{
+				freeCamera = mainCamera;
+			}
 
 			ImGui::End();
 		}
@@ -1012,7 +1046,7 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 
 	for (uint32_t i = 0; i < mainDrawContext.OpaqueSurfaces.size(); i++) 
 	{
-		if (is_visible(mainDrawContext.OpaqueSurfaces[i], sceneData.viewProj))
+		if (is_visible(mainDrawContext.OpaqueSurfaces[i], sceneData.cullViewProj))
 		{
 			opaqueDraws.push_back(i);
 		}
