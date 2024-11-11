@@ -359,10 +359,58 @@ void VulkanEngine::updateScene(float const delta)
 {
 	auto const start = std::chrono::high_resolution_clock::now();
 
-	mainDrawContext.OpaqueSurfaces.clear();
-	mainDrawContext.TransparentSurfaces.clear();
+	static bool once = true;
+	if (once)
+	{
+		mainDrawContext.OpaqueSurfaces.clear();
+		mainDrawContext.TransparentSurfaces.clear();
 
-	loadedScenes["structure"]->draw(glm::mat4{ 1.0f }, mainDrawContext);
+		loadedScenes["structure"]->draw(glm::mat4{ 1.0f }, mainDrawContext);
+
+		// Sort opaques by material and mesh
+		std::ranges::sort(mainDrawContext.OpaqueSurfaces, [&](const auto& a, const auto& b)
+			{
+				if (a.material == b.material)
+				{
+					return a.indexBuffer < b.indexBuffer;
+				}
+				else
+				{
+					return a.material < b.material;
+				}
+			});
+
+		// Make draw indirect buffer once
+
+		size_t const drawIndirectBufferSize = sizeof(VkDrawIndexedIndirectCommand) * (mainDrawContext.OpaqueSurfaces.size() + mainDrawContext.TransparentSurfaces.size());
+		drawIndirectCommandBuffer = createBuffer(drawIndirectBufferSize, VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		mainDeletionQueue.pushFunction([=, this]()
+			{
+				destroyBuffer(drawIndirectCommandBuffer);
+			});
+
+		VkDrawIndexedIndirectCommand* drawIndirectCommands = static_cast<VkDrawIndexedIndirectCommand*>(drawIndirectCommandBuffer.allocation->GetMappedData());
+		size_t cmdIdx = 0;
+		for (auto const& r : mainDrawContext.OpaqueSurfaces)
+		{
+			drawIndirectCommands[cmdIdx].indexCount = r.indexCount;
+			drawIndirectCommands[cmdIdx].instanceCount = 1;
+			drawIndirectCommands[cmdIdx].firstIndex = r.firstIndex;
+			drawIndirectCommands[cmdIdx].vertexOffset = 0;
+			drawIndirectCommands[cmdIdx].firstInstance = 0;
+			++cmdIdx;
+		}
+		for (auto const& r : mainDrawContext.TransparentSurfaces)
+		{
+			drawIndirectCommands[cmdIdx].indexCount = r.indexCount;
+			drawIndirectCommands[cmdIdx].instanceCount = 1;
+			drawIndirectCommands[cmdIdx].firstIndex = r.firstIndex;
+			drawIndirectCommands[cmdIdx].vertexOffset = 0;
+			drawIndirectCommands[cmdIdx].firstInstance = 0;
+			++cmdIdx;
+		}
+		once = false;
+	}
 
 	mainCamera.update(delta);
 	freeCamera.update(delta);
@@ -1041,7 +1089,7 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	stats.triangleCount = 0;
 	auto const start = std::chrono::high_resolution_clock::now();
 
-	std::vector<uint32_t> opaqueDraws;
+	/*std::vector<uint32_t> opaqueDraws;
 	opaqueDraws.reserve(mainDrawContext.OpaqueSurfaces.size());
 
 	for (uint32_t i = 0; i < mainDrawContext.OpaqueSurfaces.size(); i++) 
@@ -1050,22 +1098,7 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 		{
 			opaqueDraws.push_back(i);
 		}
-	}
-
-	// sort the opaque surfaces by material and mesh
-	std::ranges::sort(opaqueDraws, [&](const auto& iA, const auto& iB) 
-	{
-		const RenderObject& A = mainDrawContext.OpaqueSurfaces[iA];
-		const RenderObject& B = mainDrawContext.OpaqueSurfaces[iB];
-		if (A.material == B.material) 
-		{
-			return A.indexBuffer < B.indexBuffer;
-		}
-		else 
-		{
-			return A.material < B.material;
-		}
-	});
+	}*/
 
 	VkRenderingAttachmentInfo const colorAttachment = vkInit::attachment_info(drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
 	VkRenderingAttachmentInfo const depthAttachment = vkInit::depth_attachment_info(depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
@@ -1092,7 +1125,7 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	MaterialInstance* lastMaterial = nullptr;
 	VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
 
-	auto draw = [&](RenderObject const& object)
+	auto draw = [&](RenderObject const& object, size_t cmdIdx)
 	{
 		if (object.material != lastMaterial)
 		{
@@ -1144,19 +1177,26 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 
 		vkCmdPushConstants(cmd, object.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
-		vkCmdDrawIndexed(cmd, object.indexCount, 1, object.firstIndex, 0, 0);
+		VkDeviceSize indirectOffset = cmdIdx * sizeof(VkDrawIndexedIndirectCommand);
+		uint32_t stride = sizeof(VkDrawIndexedIndirectCommand);
+
+		vkCmdDrawIndexedIndirect(cmd, drawIndirectCommandBuffer.buffer, indirectOffset, 1, stride);
+		//vkCmdDrawIndexed(cmd, object.indexCount, 1, object.firstIndex, 0, 0);
 
 		stats.drawCallCount++;
 		stats.triangleCount += static_cast<int>(object.indexCount) / 3;
 	};
 
-	for (auto r : opaqueDraws)
+	size_t cmdIdx = 0;
+	for (auto r : mainDrawContext.OpaqueSurfaces)
 	{
-		draw(mainDrawContext.OpaqueSurfaces[r]);
+		draw(r, cmdIdx);
+		++cmdIdx;
 	}
 	for (auto r : mainDrawContext.TransparentSurfaces)
 	{
-		draw(r);
+		draw(r, cmdIdx);
+		++cmdIdx;
 	}
 
 	vkCmdEndRendering(cmd);
