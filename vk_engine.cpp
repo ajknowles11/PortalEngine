@@ -231,13 +231,13 @@ void VulkanEngine::init()
 	isInitialized = true;
 
 	mainCamera.velocity = glm::vec3(0.0f);
-	mainCamera.position = glm::vec3(30, 0, -85);
+	mainCamera.position = glm::vec3(0, 0, 0);
 	mainCamera.pitch = 0;
 	mainCamera.yaw = 0;
 
 	freeCamera = mainCamera;
 
-	std::string const structurePath = { data_path("assets/structure.glb") };
+	std::string const structurePath = { data_path("assets/house2.glb") };
 	auto const structureFile = load_gltf(this, structurePath);
 
 	assert(structureFile.has_value());
@@ -292,7 +292,7 @@ void VulkanEngine::draw()
 	uint32_t swapchainImageIndex;
 	if (VkResult const e = vkAcquireNextImageKHR(device, swapchain, 1000000000, getCurrentFrame().swapchainSemaphore, nullptr, &swapchainImageIndex); e == VK_ERROR_OUT_OF_DATE_KHR)
 	{
-		resizeRequested = true;
+		recreateSwapchainRequested = true;
 		return;
 	}
 
@@ -349,7 +349,7 @@ void VulkanEngine::draw()
 
 	if (VkResult const presentResult = vkQueuePresentKHR(graphicsQueue, &presentInfo); presentResult == VK_ERROR_OUT_OF_DATE_KHR)
 	{
-		resizeRequested = true;
+		recreateSwapchainRequested = true;
 	}
 
 	frameNumber++;
@@ -468,7 +468,7 @@ void VulkanEngine::run()
 			{
 				if (e.window.event == SDL_WINDOWEVENT_RESIZED)
 				{
-					resizeRequested = true;
+					recreateSwapchainRequested = true;
 				}
 				if (e.window.event == SDL_WINDOWEVENT_MINIMIZED)
 				{
@@ -498,9 +498,9 @@ void VulkanEngine::run()
 			continue;
 		}
 
-		if (resizeRequested)
+		if (recreateSwapchainRequested)
 		{
-			resizeSwapchain();
+			recreateSwapchain();
 		}
 
 		ImGui_ImplVulkan_NewFrame();
@@ -522,8 +522,6 @@ void VulkanEngine::run()
 
 		if (ImGui::Begin("Background"))
 		{
-			ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
-
 			ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
 
 			ImGui::Text("Selected effect: %s", selected.name.c_str());
@@ -534,6 +532,21 @@ void VulkanEngine::run()
 			ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
 			ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
 			ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
+
+			ImGui::End();
+		}
+
+		if (ImGui::Begin("Graphics Settings"))
+		{
+			ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
+
+			bool newVSyncEnabled;
+			ImGui::Checkbox("VSync Enabled", &newVSyncEnabled);
+			if (newVSyncEnabled != vSyncEnabled)
+			{
+				vSyncEnabled = newVSyncEnabled;
+				recreateSwapchainRequested = true;
+			}
 
 			ImGui::End();
 		}
@@ -1031,7 +1044,7 @@ void VulkanEngine::createSwapchain(uint32_t const width, uint32_t const height)
 
 	vkb::Swapchain vkbSwapchain = swapchainBuilder
 		.set_desired_format(VkSurfaceFormatKHR{ .format = swapchainImageFormat, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR })
-		.set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
+		.set_desired_present_mode(vSyncEnabled ? VK_PRESENT_MODE_FIFO_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR)
 		.set_desired_extent(width, height)
 		.add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
 		.build()
@@ -1054,7 +1067,7 @@ void VulkanEngine::destroySwapchain() const
 	}
 }
 
-void VulkanEngine::resizeSwapchain()
+void VulkanEngine::recreateSwapchain()
 {
 	vkDeviceWaitIdle(device);
 
@@ -1067,7 +1080,7 @@ void VulkanEngine::resizeSwapchain()
 
 	createSwapchain(windowExtent.width, windowExtent.height);
 
-	resizeRequested = false;
+	recreateSwapchainRequested = false;
 }
 
 void VulkanEngine::drawBackground(VkCommandBuffer const cmd) const

@@ -12,7 +12,7 @@
 #include "fastgltf/core.hpp"
 #include "fastgltf/tools.hpp"
 
-std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::Asset& asset, fastgltf::Image& image)
+std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::Asset& asset, fastgltf::Image& image, std::filesystem::path directory)
 {
 	AllocatedImage newImage{};
 
@@ -25,9 +25,11 @@ std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::A
 			[&](fastgltf::sources::URI& filePath)
 			{
 				assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
-				assert(filePath.uri.isLocalPath()); // We're only capable of loading local files.
+				assert(filePath.uri.isLocalPath()); // We're only capable of loading local files.\
 
-				unsigned char* data = stbi_load(filePath.uri.path().data(), &width, &height, &nrChannels, 4);
+				std::string const fixedPath = std::move(directory).string() + "/" + std::string(filePath.uri.path());
+
+				unsigned char* data = stbi_load(fixedPath.c_str(), &width, &height, &nrChannels, 4);
 				if (data)
 				{
 					VkExtent3D const imageSize
@@ -224,7 +226,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 
 	// load all textures
 	for (fastgltf::Image& image : gltf.images) {
-		std::optional<AllocatedImage> img = load_image(engine, gltf, image);
+		std::optional<AllocatedImage> img = load_image(engine, gltf, image, path.parent_path());
 
 		if (img.has_value()) {
 			images.push_back(*img);

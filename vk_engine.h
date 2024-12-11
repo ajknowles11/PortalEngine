@@ -138,6 +138,7 @@ public:
 		Detached    // Control main cam but view from free cam
 	} cameraMode = Default;
 
+	bool vSyncEnabled = false;
 
 	EngineStats stats;
 
@@ -174,7 +175,7 @@ public:
 	std::vector<VkImageView> swapchainImageViews;
 	VkExtent2D swapchainExtent;
 
-	bool resizeRequested = false;
+	bool recreateSwapchainRequested = false;
 
 	FrameData frames[FRAME_OVERLAP];
 
@@ -255,5 +256,5 @@ private:
 
 	void createSwapchain(uint32_t width, uint32_t height);
 	void destroySwapchain() const;
-	void resizeSwapchain();
+	void recreateSwapchain();
 };
