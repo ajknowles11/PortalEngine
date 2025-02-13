@@ -1,6 +1,7 @@
 #include "vk_loader.h"
 
 #include "stb_image.h"
+#include <chrono>
 #include <iostream>
 
 #include "vk_engine.h"
@@ -143,7 +144,13 @@ VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter const filter)
 
 std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::string_view filePath)
 {
+	VkPhysicalDeviceProperties deviceProperties{};
+	vkGetPhysicalDeviceProperties(engine->selectedGPU, &deviceProperties);
+
 	std::cout << "Loading glTF: " << filePath << "\n";
+
+	auto const startTime = std::chrono::high_resolution_clock::now();
+	auto lastTime = startTime;
 
 	auto scene = std::make_shared<LoadedGLTF>();
 	scene->creator = engine;
@@ -155,6 +162,12 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 
 	fastgltf::GltfDataBuffer data;
 	data.loadFromFile(filePath);
+
+	auto currentTime = std::chrono::high_resolution_clock::now();
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastTime);
+	lastTime = currentTime;
+
+	std::cout << "> file loaded in " << elapsed << "." << std::endl;
 
 	fastgltf::Asset gltf;
 
@@ -193,12 +206,39 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 		return {};
 	}
 
+	currentTime = std::chrono::high_resolution_clock::now();
+	elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastTime);
+	lastTime = currentTime;
+
+	std::cout << "> glTF loaded in " << elapsed << "." << std::endl;
+
 	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes =
 	{ {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3},
 		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3},
 		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1} };
 
 	file.descriptorPool.init(engine->device, static_cast<uint32_t>(gltf.materials.size()), sizes);
+
+	if (gltf.samplers.empty())
+	{
+		VkSamplerCreateInfo samplerInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.pNext = nullptr,
+			.magFilter = VK_FILTER_LINEAR,
+			.minFilter = VK_FILTER_LINEAR,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+			.anisotropyEnable = VK_TRUE,
+			.maxAnisotropy = deviceProperties.limits.maxSamplerAnisotropy,
+			.minLod = 0,
+			.maxLod = VK_LOD_CLAMP_NONE,
+		};
+
+		VkSampler newSampler;
+		vkCreateSampler(engine->device, &samplerInfo, nullptr, &newSampler);
+
+		file.samplers.push_back(newSampler);
+	}
 
 	for (fastgltf::Sampler& sampler : gltf.samplers)
 	{
@@ -218,6 +258,12 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 
 		file.samplers.push_back(newSampler);
 	}
+
+	currentTime = std::chrono::high_resolution_clock::now();
+	elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastTime);
+	lastTime = currentTime;
+
+	std::cout << "> samplers loaded in " << elapsed << "." << std::endl;
 
 	std::vector<std::shared_ptr<MeshAsset>> meshes;
 	std::vector<std::shared_ptr<Node>> nodes;
@@ -239,6 +285,12 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 			std::cout << "gltf failed to load texture " << image.name << std::endl;
 		}
 	}
+
+	currentTime = std::chrono::high_resolution_clock::now();
+	elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastTime);
+	lastTime = currentTime;
+
+	std::cout << "> textures loaded in " << elapsed << "." << std::endl;
 
 	file.materialDataBuffer = engine->createBuffer(sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
@@ -282,7 +334,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 		if (mat.pbrData.baseColorTexture.has_value()) 
 		{
 			size_t img = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].imageIndex.value();
-			size_t sample = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.value();
+			size_t sample = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.has_value() ? 
+				gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.value() : 0;
 
 			materialResources.colorImage = images[img];
 			materialResources.colorSampler = file.samplers[sample];
@@ -292,6 +345,12 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 
 		data_index++;
 	}
+
+	currentTime = std::chrono::high_resolution_clock::now();
+	elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastTime);
+	lastTime = currentTime;
+
+	std::cout << "> materials loaded in " << elapsed << "." << std::endl;
 
 	// use the same vectors for all meshes so that the memory doesn't reallocate as
 	// often
@@ -409,6 +468,12 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 		newMesh->meshBuffers = engine->uploadMesh(indices, vertices);
 	}
 
+	currentTime = std::chrono::high_resolution_clock::now();
+	elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastTime);
+	lastTime = currentTime;
+
+	std::cout << "> meshes loaded in " << elapsed << "." << std::endl;
+
 	// load all nodes and their meshes
 	for (fastgltf::Node& node : gltf.nodes) 
 	{
@@ -471,6 +536,11 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 			node->refreshTransform(glm::mat4{ 1.f });
 		}
 	}
+
+	currentTime = std::chrono::high_resolution_clock::now();
+	elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime);
+
+	std::cout << "> scene ready in " << elapsed << " (total)." << std::endl;
 	return scene;
 }
 
