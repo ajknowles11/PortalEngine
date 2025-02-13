@@ -159,7 +159,7 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 
 	opaquePipeline.pipeline = pipelineBuilder.buildPipeline(engine->device);
 
-	pipelineBuilder.enableBlendingAdditive();
+	pipelineBuilder.enableBlendingAlphaBlend();
 	pipelineBuilder.enableDepthTest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
 	transparentPipeline.pipeline = pipelineBuilder.buildPipeline(engine->device);
@@ -423,7 +423,7 @@ void VulkanEngine::updateScene(float const delta)
 	{
 		sceneData.view = freeCamera.getViewMatrix();
 	}
-	sceneData.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent.width) / static_cast<float>(drawExtent.height), 10000.0f, 0.1f);
+	sceneData.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent.width) / static_cast<float>(drawExtent.height), 10000.0f, 0.01f);
 	sceneData.proj[1][1] *= -1;
 	sceneData.viewProj = sceneData.proj * sceneData.view;
 	sceneData.cullViewProj = sceneData.proj * mainCamView;

@@ -13,6 +13,28 @@
 #include "fastgltf/core.hpp"
 #include "fastgltf/tools.hpp"
 
+// could be handled on GPU, maybe in VulkanEngine::CreateImage instead
+void premultiply_alpha(unsigned char* data, VkExtent3D const size)
+{
+	size_t const dataSize = static_cast<size_t>(size.depth) * static_cast<size_t>(size.width) * static_cast<size_t>(size.height) * 4;
+
+	for (int i = 0; i < dataSize; i += 4)
+	{
+		uint16_t r = static_cast<uint16_t>(data[i]);
+		uint16_t g = static_cast<uint16_t>(data[i + 1]);
+		uint16_t b = static_cast<uint16_t>(data[i + 2]);
+		uint16_t a = static_cast<uint16_t>(data[i + 3]);
+
+		r = r * a / 255;
+		g = g * a / 255;
+		b = b * a / 255;
+
+		data[i] = static_cast<unsigned char>(r);
+		data[i + 1] = static_cast<unsigned char>(g);
+		data[i + 2] = static_cast<unsigned char>(b);
+	}
+}
+
 std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::Asset& asset, fastgltf::Image& image, std::filesystem::path directory)
 {
 	AllocatedImage newImage{};
@@ -40,6 +62,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::A
 						.depth = 1
 					};
 
+					premultiply_alpha(data, imageSize);
 					newImage = engine->createImage(data, imageSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT,false);
 
 					stbi_image_free(data);
@@ -58,6 +81,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::A
 						.depth = 1
 					};
 
+					premultiply_alpha(data, imageSize);
 					newImage = engine->createImage(data, imageSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT,false);
 
 					stbi_image_free(data);
@@ -88,6 +112,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::A
 								.depth = 1
 							};
 
+							premultiply_alpha(data, imageSize);
 							newImage = engine->createImage(data, imageSize, VK_FORMAT_R8G8B8A8_UNORM,
 								VK_IMAGE_USAGE_SAMPLED_BIT, true);
 

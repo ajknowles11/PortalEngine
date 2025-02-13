@@ -11,7 +11,7 @@ void Camera::update(float delta)
 		velocity.x = static_cast<float>(dKey.pressed - aKey.pressed);
 		velocity.y = static_cast<float>(eKey.pressed - qKey.pressed);
 		glm::mat4 const cameraRotation = getRotationMatrix();
-		velocity *= shiftKey.pressed ? 10.0f : 5.0f;
+		velocity *= shiftKey.pressed ? 10.0f : 2.0f;
 		position += glm::vec3(cameraRotation * glm::vec4(velocity, 0.0f)) * delta;
 	}
 	else
