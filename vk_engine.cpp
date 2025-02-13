@@ -237,7 +237,7 @@ void VulkanEngine::init()
 
 	freeCamera = mainCamera;
 
-	std::string const structurePath = { data_path("assets/house2.glb") };
+	std::string const structurePath = { data_path("assets/bistro/Bistro_Godot.glb") };
 	auto const structureFile = load_gltf(this, structurePath);
 
 	assert(structureFile.has_value());
@@ -614,7 +614,7 @@ void VulkanEngine::initVulkan()
 
 	SDL_Vulkan_CreateSurface(window, instance, &surface);
 
-	VkPhysicalDeviceVulkan13Features features
+	VkPhysicalDeviceVulkan13Features features13
 	{
 		.synchronization2 = true,
 		.dynamicRendering = true
@@ -626,11 +626,17 @@ void VulkanEngine::initVulkan()
 		.bufferDeviceAddress = true
 	};
 
+	VkPhysicalDeviceFeatures features
+	{
+		.samplerAnisotropy = VK_TRUE
+	};
+
 	vkb::PhysicalDeviceSelector selector{ vkbInst };
 	vkb::PhysicalDevice physicalDevice = selector
 		.set_minimum_version(1, 3)
-		.set_required_features_13(features)
+		.set_required_features_13(features13)
 		.set_required_features_12(features12)
+		.set_required_features(features)
 		.set_surface(surface)
 		.select()
 		.value();
