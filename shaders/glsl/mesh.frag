@@ -11,6 +11,7 @@ layout (location = 0) out vec4 outFragColor;
 
 void main() 
 {
+	if (texture(colorTex, inUV).w == 0.0) discard;
 	float lightValue = max(dot(inNormal, sceneData.sunlightDirection.xyz), 0.1f);
 
 	vec3 color = inColor * texture(colorTex,inUV).xyz;
