@@ -516,9 +516,8 @@ void VulkanEngine::run()
 			ImGui::Text("update time %f ms", static_cast<double>(stats.sceneUpdateTime));
 			ImGui::Text("triangles %i", stats.triangleCount);
 			ImGui::Text("draws %i", stats.drawCallCount);
-
-			ImGui::End();
 		}
+		ImGui::End();
 
 		if (ImGui::Begin("Background"))
 		{
@@ -532,9 +531,8 @@ void VulkanEngine::run()
 			ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
 			ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
 			ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
-
-			ImGui::End();
 		}
+		ImGui::End();
 
 		if (ImGui::Begin("Graphics Settings"))
 		{
@@ -547,9 +545,8 @@ void VulkanEngine::run()
 				vSyncEnabled = newVSyncEnabled;
 				recreateSwapchainRequested = true;
 			}
-
-			ImGui::End();
 		}
+		ImGui::End();
 
 		if (ImGui::Begin("Camera"))
 		{
@@ -562,9 +559,8 @@ void VulkanEngine::run()
 			{
 				freeCamera = mainCamera;
 			}
-
-			ImGui::End();
 		}
+		ImGui::End();
 
 		ImGui::Render();
 
