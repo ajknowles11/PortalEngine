@@ -666,7 +666,18 @@ void VulkanEngine::initSwapchain()
 {
 	createSwapchain(windowExtent.width, windowExtent.height);
 
-	VkExtent3D const drawImageExtent = { windowExtent.width, windowExtent.height, 1 };
+	SDL_DisplayMode displayMode;
+	if (SDL_GetDesktopDisplayMode(0, &displayMode) != 0)
+	{
+		//error
+	}
+
+	int screenW, screenH;
+	screenW = displayMode.w;
+	screenH = displayMode.h;
+
+	// must be recreated if monitor changes resolution (or maybe just choose max possible resolution>?? idk)
+	VkExtent3D const drawImageExtent = { screenW, screenH, 1 };
 
 	drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 	drawImage.imageExtent = drawImageExtent;
