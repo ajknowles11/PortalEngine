@@ -4,27 +4,28 @@
 
 #include "camera.h"
 
+#include "scene.h"
 #include "vk_descriptors.h"
 #include "vk_loader.h"
 #include "vk_types.h"
 
 unsigned int constexpr FRAME_OVERLAP = 2;
 
-struct DeletionQueue
+struct CallbackQueue
 {
-	std::deque<std::function<void()>> deletors;
+	std::deque<std::function<void()>> functions;
 
 	void pushFunction(std::function<void()>&& function) {
-		deletors.push_back(function);
+		functions.push_back(function);
 	}
 
 	void flush() {
-		// reverse iterate the deletion queue to execute all the functions
-		for (auto it = deletors.rbegin(); it != deletors.rend(); ++it) {
+		// reverse iterate the queue to execute all the functions
+		for (auto it = functions.rbegin(); it != functions.rend(); ++it) {
 			(*it)(); //call functors
 		}
 
-		deletors.clear();
+		functions.clear();
 	}
 };
 
@@ -64,8 +65,10 @@ struct FrameData
 	VkSemaphore swapchainSemaphore, renderSemaphore;
 	VkFence renderFence;
 
-	DeletionQueue deletionQueue;
+	CallbackQueue deletionQueue;
 	DescriptorAllocatorGrowable frameDescriptors;
+
+	CallbackQueue postFrameQueue;
 };
 
 struct DrawContext
@@ -184,7 +187,8 @@ public:
 	VkQueue graphicsQueue;
 	uint32_t graphicsQueueFamily;
 
-	DeletionQueue mainDeletionQueue;
+	CallbackQueue mainDeletionQueue;
+	CallbackQueue sceneDeletionQueue;
 
 	VmaAllocator allocator;
 
@@ -214,11 +218,15 @@ public:
 	DrawContext mainDrawContext;
 
 	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
+	bool indirectDrawInitialized = false;
 
 	AllocatedBuffer drawIndirectCommandBuffer;
 
 	void init();
 	void cleanup();
+	void queueLoadScene(std::string filePath);
+	void loadScene(std::string_view filePath);
+	void saveScene(std::shared_ptr<LoadedGLTF> scene) {}
 	void draw();
 	void drawBackground(VkCommandBuffer cmd) const;
 	void drawGeometry(VkCommandBuffer cmd);
@@ -238,6 +246,9 @@ public:
 	void destroyImage(AllocatedImage const& img) const;
 
 private:
+
+	void initScene(std::shared_ptr<LoadedGLTF> newScene);
+	void cleanupScene();
 
 	void initVulkan();
 	void initSwapchain();

@@ -603,3 +603,8 @@ void LoadedGLTF::clearAll()
 		vkDestroySampler(dv, sampler, nullptr);
 	}
 }
+
+std::optional<std::shared_ptr<LoadedGLTF>> load_pscn(VulkanEngine* engine, std::string_view filePath) 
+{
+	return nullptr;
+}

@@ -30,53 +30,54 @@ void Camera::update(float delta)
 
 void Camera::processSDLEvent(SDL_Event& e)
 {
-	if (e.type == SDL_KEYDOWN)
+	if (e.type == SDL_EVENT_KEY_DOWN)
 	{
-		if (e.key.keysym.sym == SDLK_w) { wKey.pressed = true; wKey.downs += 1; }
-		if (e.key.keysym.sym == SDLK_s) { sKey.pressed = true; sKey.downs += 1; }
-		if (e.key.keysym.sym == SDLK_a) { aKey.pressed = true; aKey.downs += 1; }
-		if (e.key.keysym.sym == SDLK_d) { dKey.pressed = true; dKey.downs += 1;}
+		if (e.key.key == SDLK_W) { wKey.pressed = true; wKey.downs += 1; }
+		if (e.key.key == SDLK_S) { sKey.pressed = true; sKey.downs += 1; }
+		if (e.key.key == SDLK_A) { aKey.pressed = true; aKey.downs += 1; }
+		if (e.key.key == SDLK_D) { dKey.pressed = true; dKey.downs += 1;}
 
-		if (e.key.keysym.sym == SDLK_q) { qKey.pressed = true; qKey.downs += 1;}
-		if (e.key.keysym.sym == SDLK_e) { eKey.pressed = true; eKey.downs += 1;}
+		if (e.key.key == SDLK_Q) { qKey.pressed = true; qKey.downs += 1;}
+		if (e.key.key == SDLK_E) { eKey.pressed = true; eKey.downs += 1;}
 
-		if (e.key.keysym.sym == SDLK_LSHIFT) { shiftKey.pressed = true; shiftKey.downs += 1;}
+		if (e.key.key == SDLK_LSHIFT) { shiftKey.pressed = true; shiftKey.downs += 1;}
 	}
 
-	if (e.type == SDL_KEYUP)
+	if (e.type == SDL_EVENT_KEY_UP)
 	{
-		if (e.key.keysym.sym == SDLK_w) { wKey.pressed = false; }
-		if (e.key.keysym.sym == SDLK_s) { sKey.pressed = false; }
-		if (e.key.keysym.sym == SDLK_a) { aKey.pressed = false; }
-		if (e.key.keysym.sym == SDLK_d) { dKey.pressed = false; }
+		if (e.key.key == SDLK_W) { wKey.pressed = false; }
+		if (e.key.key == SDLK_S) { sKey.pressed = false; }
+		if (e.key.key == SDLK_A) { aKey.pressed = false; }
+		if (e.key.key == SDLK_D) { dKey.pressed = false; }
 
-		if (e.key.keysym.sym == SDLK_q) { qKey.pressed = false; }
-		if (e.key.keysym.sym == SDLK_e) { eKey.pressed = false; }
+		if (e.key.key == SDLK_Q) { qKey.pressed = false; }
+		if (e.key.key == SDLK_E) { eKey.pressed = false; }
 
-		if (e.key.keysym.sym == SDLK_LSHIFT) { shiftKey.pressed = false; }
+		if (e.key.key == SDLK_LSHIFT) { shiftKey.pressed = false; }
 	}
 
-	if (e.type == SDL_MOUSEBUTTONDOWN)
+	if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
 	{
 		if (e.button.button == SDL_BUTTON_RIGHT)
 		{
 			rightClick.pressed = true;
 			rightClick.downs += 1;
-			SDL_SetRelativeMouseMode(SDL_TRUE);
-			SDL_ShowCursor(SDL_DISABLE);
+			SDL_SetWindowRelativeMouseMode(window, true);
+			SDL_HideCursor();
 		}
 	}
 
-	if (e.type == SDL_MOUSEBUTTONUP)
+	if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
 	{
 		if (e.button.button == SDL_BUTTON_RIGHT)
 		{
 			rightClick.pressed = false;
-			SDL_SetRelativeMouseMode(SDL_FALSE);
+			SDL_SetWindowRelativeMouseMode(window, false);
+			SDL_ShowCursor();
 		}
 	}
 
-	if (e.type == SDL_MOUSEMOTION)
+	if (e.type == SDL_EVENT_MOUSE_MOTION)
 	{
 		if (rightClick.pressed)
 		{

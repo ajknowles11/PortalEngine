@@ -1,7 +1,8 @@
 #include "vk_engine.h"
 
-#include <SDL.h>
-#include <SDL_vulkan.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_dialog.h>
+#include <SDL3/SDL_vulkan.h>
 
 #include "vk_images.h"
 #include "vk_initializers.h"
@@ -9,7 +10,7 @@
 #include "vk_types.h"
 
 #include "imgui.h"
-#include "imgui_impl_sdl2.h"
+#include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
 #include "VkBootstrap.h"
 
@@ -210,8 +211,6 @@ void VulkanEngine::init()
 
 	window = SDL_CreateWindow(
 		windowTitle.c_str(),
-		SDL_WINDOWPOS_UNDEFINED,
-		SDL_WINDOWPOS_UNDEFINED,
 		static_cast<int>(windowExtent.width),
 		static_cast<int>(windowExtent.height),
 		windowFlags
@@ -224,6 +223,7 @@ void VulkanEngine::init()
 	initCommands();
 	initSyncStructs();
 	initDescriptors();
+	// at some point when materials are scene-dependent this needs to be moved to initScene
 	initPipelines();
 	initDefaultData();
 	initImgui();
@@ -234,15 +234,9 @@ void VulkanEngine::init()
 	mainCamera.position = glm::vec3(0, 0, 0);
 	mainCamera.pitch = 0;
 	mainCamera.yaw = 0;
+	mainCamera.window = window;
 
 	freeCamera = mainCamera;
-
-	std::string const structurePath = { data_path("assets/bistro/Bistro_Godot.glb") };
-	auto const structureFile = load_gltf(this, structurePath);
-
-	assert(structureFile.has_value());
-
-	loadedScenes["structure"] = *structureFile;
 }
 
 void VulkanEngine::cleanup()
@@ -251,7 +245,7 @@ void VulkanEngine::cleanup()
 	{
 		vkDeviceWaitIdle(device);
 
-		loadedScenes.clear();
+		cleanupScene();
 
 		for (unsigned int i = 0; i < FRAME_OVERLAP; i++)
 		{
@@ -278,6 +272,31 @@ void VulkanEngine::cleanup()
 
 		SDL_DestroyWindow(window);
 	}
+}
+
+void VulkanEngine::queueLoadScene(std::string const filePath) 
+{
+	getCurrentFrame().postFrameQueue.pushFunction([this, filePath]()
+		{
+			vkDeviceWaitIdle(device);
+			loadScene(filePath);
+		});
+}
+
+void VulkanEngine::loadScene(std::string_view const filePath)
+{
+	std::optional<std::shared_ptr<LoadedGLTF>> newScene;
+	std::filesystem::path path = filePath;
+	// REPLACE THIS LATER WITH BETTER FILE CHECKING
+	if (path.extension() == ".glb" || path.extension() == ".gltf") {
+		newScene = load_gltf(this, filePath);
+	}
+	/*else if (path.extension() == ".pscn") {
+		newScene = load_pscn(this, filePath);
+	}*/
+	assert(newScene.has_value());
+	cleanupScene();
+	initScene(*newScene);
 }
 
 void VulkanEngine::draw()
@@ -359,13 +378,15 @@ void VulkanEngine::updateScene(float const delta)
 {
 	auto const start = std::chrono::high_resolution_clock::now();
 
-	static bool once = true;
-	if (once)
+	if (!indirectDrawInitialized)
 	{
 		mainDrawContext.OpaqueSurfaces.clear();
 		mainDrawContext.TransparentSurfaces.clear();
 
-		loadedScenes["structure"]->draw(glm::mat4{ 1.0f }, mainDrawContext);
+		for (auto const& scene : loadedScenes)
+		{
+			scene.second->draw(glm::mat4{ 1.0f }, mainDrawContext);
+		}
 
 		// Sort opaques by material and mesh
 		std::ranges::sort(mainDrawContext.OpaqueSurfaces, [&](const auto& a, const auto& b)
@@ -383,33 +404,37 @@ void VulkanEngine::updateScene(float const delta)
 		// Make draw indirect buffer once
 
 		size_t const drawIndirectBufferSize = sizeof(VkDrawIndexedIndirectCommand) * (mainDrawContext.OpaqueSurfaces.size() + mainDrawContext.TransparentSurfaces.size());
-		drawIndirectCommandBuffer = createBuffer(drawIndirectBufferSize, VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-		mainDeletionQueue.pushFunction([=, this]()
-			{
-				destroyBuffer(drawIndirectCommandBuffer);
-			});
+		if (drawIndirectBufferSize != 0)
+		{
+			drawIndirectCommandBuffer = createBuffer(drawIndirectBufferSize, VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+			sceneDeletionQueue.pushFunction([=, this]()
+				{
+					destroyBuffer(drawIndirectCommandBuffer);
+				});
 
-		VkDrawIndexedIndirectCommand* drawIndirectCommands = static_cast<VkDrawIndexedIndirectCommand*>(drawIndirectCommandBuffer.allocation->GetMappedData());
-		size_t cmdIdx = 0;
-		for (auto const& r : mainDrawContext.OpaqueSurfaces)
-		{
-			drawIndirectCommands[cmdIdx].indexCount = r.indexCount;
-			drawIndirectCommands[cmdIdx].instanceCount = 1;
-			drawIndirectCommands[cmdIdx].firstIndex = r.firstIndex;
-			drawIndirectCommands[cmdIdx].vertexOffset = 0;
-			drawIndirectCommands[cmdIdx].firstInstance = 0;
-			++cmdIdx;
+			VkDrawIndexedIndirectCommand* drawIndirectCommands = static_cast<VkDrawIndexedIndirectCommand*>(drawIndirectCommandBuffer.allocation->GetMappedData());
+			size_t cmdIdx = 0;
+			for (auto const& r : mainDrawContext.OpaqueSurfaces)
+			{
+				drawIndirectCommands[cmdIdx].indexCount = r.indexCount;
+				drawIndirectCommands[cmdIdx].instanceCount = 1;
+				drawIndirectCommands[cmdIdx].firstIndex = r.firstIndex;
+				drawIndirectCommands[cmdIdx].vertexOffset = 0;
+				drawIndirectCommands[cmdIdx].firstInstance = 0;
+				++cmdIdx;
+			}
+			for (auto const& r : mainDrawContext.TransparentSurfaces)
+			{
+				drawIndirectCommands[cmdIdx].indexCount = r.indexCount;
+				drawIndirectCommands[cmdIdx].instanceCount = 1;
+				drawIndirectCommands[cmdIdx].firstIndex = r.firstIndex;
+				drawIndirectCommands[cmdIdx].vertexOffset = 0;
+				drawIndirectCommands[cmdIdx].firstInstance = 0;
+				++cmdIdx;
+			}
 		}
-		for (auto const& r : mainDrawContext.TransparentSurfaces)
-		{
-			drawIndirectCommands[cmdIdx].indexCount = r.indexCount;
-			drawIndirectCommands[cmdIdx].instanceCount = 1;
-			drawIndirectCommands[cmdIdx].firstIndex = r.firstIndex;
-			drawIndirectCommands[cmdIdx].vertexOffset = 0;
-			drawIndirectCommands[cmdIdx].firstInstance = 0;
-			++cmdIdx;
-		}
-		once = false;
+		
+		indirectDrawInitialized = true;
 	}
 
 	mainCamera.update(delta);
@@ -437,6 +462,26 @@ void VulkanEngine::updateScene(float const delta)
 	stats.meshDrawTime = static_cast<float>(elapsed.count()) / 1000.0f;
 }
 
+static const SDL_DialogFileFilter dialogFileFilters[] = {
+	{ "GLTF files",  "gltf;glb" }
+};
+
+static void SDLCALL openSceneFile(void* userData, char const* const* fileList, int filter)
+{
+	if (!fileList) {
+		SDL_Log("Error opening scene file: %s", SDL_GetError());
+		return;
+	}
+	else if (!*fileList) {
+		SDL_Log("No scene file selected.");
+		return;
+	}
+
+	if (VulkanEngine* engine = static_cast<VulkanEngine*>(userData)) {
+		engine->queueLoadScene(*fileList);
+	}
+}
+
 void VulkanEngine::run()
 {
 	SDL_Event e;
@@ -459,25 +504,22 @@ void VulkanEngine::run()
 
 		while (SDL_PollEvent(&e) != 0)
 		{
-			if (e.type == SDL_QUIT)
+			if (e.type == SDL_EVENT_QUIT)
 			{
 				shouldQuit = true;
 			}
 
-			if (e.type == SDL_WINDOWEVENT)
+			if (e.type == SDL_EVENT_WINDOW_RESIZED)
 			{
-				if (e.window.event == SDL_WINDOWEVENT_RESIZED)
-				{
-					recreateSwapchainRequested = true;
-				}
-				if (e.window.event == SDL_WINDOWEVENT_MINIMIZED)
-				{
-					stopRendering = true;
-				}
-				if (e.window.event == SDL_WINDOWEVENT_RESTORED)
-				{
-					stopRendering = false;
-				}
+				recreateSwapchainRequested = true;
+			}
+			if (e.type == SDL_EVENT_WINDOW_MINIMIZED)
+			{
+				stopRendering = true;
+			}
+			if (e.type == SDL_EVENT_WINDOW_RESTORED)
+			{
+				stopRendering = false;
 			}
 
 			if (cameraMode == Default || cameraMode == Detached)
@@ -489,7 +531,7 @@ void VulkanEngine::run()
 				freeCamera.processSDLEvent(e);
 			}
 
-			ImGui_ImplSDL2_ProcessEvent(&e);
+			ImGui_ImplSDL3_ProcessEvent(&e);
 		}
 
 		if (stopRendering)
@@ -504,7 +546,7 @@ void VulkanEngine::run()
 		}
 
 		ImGui_ImplVulkan_NewFrame();
-		ImGui_ImplSDL2_NewFrame();
+		ImGui_ImplSDL3_NewFrame();
 
 		ImGui::NewFrame();
 
@@ -562,11 +604,27 @@ void VulkanEngine::run()
 		}
 		ImGui::End();
 
+		
+		if (ImGui::Begin("Scene"))
+		{
+			ImGui::Text("Current scene: %s", "default");
+			if (ImGui::Button("Open Scene File"))
+			{
+				static const SDL_DialogFileFilter dialogFileFilters[] = {
+					{ "GLTF files",  "gltf;glb" }
+				};
+				SDL_ShowOpenFileDialog(openSceneFile, this, nullptr, dialogFileFilters, 1, data_path("").c_str(), false);
+			}
+		}
+		ImGui::End();
+
 		ImGui::Render();
 
 		updateScene(elapsed);
 
 		draw();
+
+		getCurrentFrame().postFrameQueue.flush();
 	}
 }
 
@@ -593,6 +651,18 @@ void VulkanEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& fu
 	VK_CHECK(vkWaitForFences(device, 1, &immFence, true, 9999999999));
 }
 
+void VulkanEngine::initScene(std::shared_ptr<LoadedGLTF> const newScene)
+{
+	loadedScenes["0"] = newScene;
+}
+
+void VulkanEngine::cleanupScene() 
+{
+	sceneDeletionQueue.flush();
+	loadedScenes.clear();
+	indirectDrawInitialized = false;
+}
+
 void VulkanEngine::initVulkan()
 {
 	vkb::InstanceBuilder builder;
@@ -608,7 +678,7 @@ void VulkanEngine::initVulkan()
 	instance = vkbInst.instance;
 	debugMessenger = vkbInst.debug_messenger;
 
-	SDL_Vulkan_CreateSurface(window, instance, &surface);
+	SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface);
 
 	VkPhysicalDeviceVulkan13Features features13
 	{
@@ -666,15 +736,22 @@ void VulkanEngine::initSwapchain()
 {
 	createSwapchain(windowExtent.width, windowExtent.height);
 
-	SDL_DisplayMode displayMode;
-	if (SDL_GetDesktopDisplayMode(0, &displayMode) != 0)
+	int numDisplays = 0;
+	SDL_DisplayID* displays = SDL_GetDisplays(&numDisplays);
+	if (!displays) 
 	{
-		//error
+		//error (or offline rendering)
 	}
 
-	int screenW, screenH;
-	screenW = displayMode.w;
-	screenH = displayMode.h;
+	SDL_DisplayMode const* displayMode = SDL_GetDesktopDisplayMode(*displays);
+	if (!displayMode)
+	{
+		//error (or offline rendering)
+	}
+
+	uint32_t screenW, screenH;
+	screenW = static_cast<uint32_t>(displayMode->w);
+	screenH = static_cast<uint32_t>(displayMode->h);
 
 	// must be recreated if monitor changes resolution (or maybe just choose max possible resolution>?? idk)
 	VkExtent3D const drawImageExtent = { screenW, screenH, 1 };
@@ -1014,7 +1091,7 @@ void VulkanEngine::initImgui()
 
 	ImGui::CreateContext();
 
-	ImGui_ImplSDL2_InitForVulkan(window);
+	ImGui_ImplSDL3_InitForVulkan(window);
 
 	VkPipelineRenderingCreateInfoKHR const imguiPipelineInfo
 	{
@@ -1039,8 +1116,6 @@ void VulkanEngine::initImgui()
 		.PipelineRenderingCreateInfo = imguiPipelineInfo
 	};
 	ImGui_ImplVulkan_Init(&initInfo);
-
-	immediateSubmit([&](VkCommandBuffer cmd) {ImGui_ImplVulkan_CreateFontsTexture(); });
 
 	mainDeletionQueue.pushFunction([=, this]()
 	{

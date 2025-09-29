@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vk_types.h"
-#include "SDL_events.h"
+#include "SDL3/SDL_events.h"
 
 struct Button
 {
@@ -16,6 +16,8 @@ public:
 	glm::vec3 position;
 	float pitch{ 0.0f };
 	float yaw{ 0.0f };
+
+	SDL_Window* window;
 
 	glm::mat4 getViewMatrix();
 	glm::mat4 getRotationMatrix();

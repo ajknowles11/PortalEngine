@@ -63,3 +63,5 @@ private:
 };
 
 std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::string_view filePath);
+
+std::optional<std::shared_ptr<LoadedGLTF>> load_pscn(VulkanEngine* engine, std::string_view filePath);
