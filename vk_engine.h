@@ -153,6 +153,8 @@ public:
 
 	struct SDL_Window* window{ nullptr };
 
+	std::string baseAppPath;
+
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debugMessenger;
 	VkPhysicalDevice selectedGPU;

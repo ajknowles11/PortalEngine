@@ -23,8 +23,6 @@
 
 #include "glm/gtx/transform.hpp"
 
-#include "data_path.h"
-
 #ifdef _DEBUG
 bool constexpr bUseValidationLayers = true;
 #else
@@ -105,13 +103,13 @@ void MeshNode::draw(glm::mat4 const& topMatrix, DrawContext& ctx)
 void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine) 
 {
 	VkShaderModule meshVertShader;
-	if (!vkUtil::load_shader_module(data_path("shaders/mesh.vert.spv").c_str(), engine->device, &meshVertShader))
+	if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/mesh.vert.spv").c_str(), engine->device, &meshVertShader))
 	{
 		std::cerr << "Error when building triangle vertex shader module";
 	}
 
 	VkShaderModule meshFragShader;
-	if (!vkUtil::load_shader_module(data_path("shaders/mesh.frag.spv").c_str(), engine->device, &meshFragShader))
+	if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/mesh.frag.spv").c_str(), engine->device, &meshFragShader))
 	{
 		std::cerr << "Error when building triangle fragment shader module";
 	}
@@ -206,6 +204,8 @@ MaterialInstance GLTFMetallic_Roughness::writeMaterial(VkDevice device, Material
 void VulkanEngine::init()
 {
 	SDL_Init(SDL_INIT_VIDEO);
+
+	baseAppPath = SDL_GetBasePath();
 
 	SDL_WindowFlags constexpr windowFlags = static_cast<SDL_WindowFlags>(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 
@@ -614,7 +614,7 @@ void VulkanEngine::run()
 				static const SDL_DialogFileFilter dialogFileFilters[] = {
 					{ "GLTF files",  "gltf;glb" }
 				};
-				SDL_ShowOpenFileDialog(openSceneFile, this, nullptr, dialogFileFilters, 1, data_path("").c_str(), false);
+				SDL_ShowOpenFileDialog(openSceneFile, this, nullptr, dialogFileFilters, 1, baseAppPath.c_str(), false);
 			}
 		}
 		ImGui::End();
@@ -929,12 +929,12 @@ void VulkanEngine::initBackgroundPipelines()
 	VK_CHECK(vkCreatePipelineLayout(device, &computeLayout, nullptr, &gradientPipelineLayout));
 	
 	VkShaderModule gradientShader;
-	if (!vkUtil::load_shader_module(data_path("shaders/gradient.comp.spv").c_str(), device, &gradientShader))
+	if (!vkUtil::load_shader_module((baseAppPath + "shaders/gradient.comp.spv").c_str(), device, &gradientShader))
 	{
 		std::cerr << "Error loading gradient shader \n";
 	}
 	VkShaderModule skyShader;
-	if (!vkUtil::load_shader_module(data_path("shaders/sky.comp.spv").c_str(), device, &skyShader))
+	if (!vkUtil::load_shader_module((baseAppPath + "shaders/sky.comp.spv").c_str(), device, &skyShader))
 	{
 		std::cerr << "Error loading sky shader \n";
 	}

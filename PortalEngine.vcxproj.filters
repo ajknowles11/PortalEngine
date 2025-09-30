@@ -54,9 +54,6 @@
     <ClCompile Include="vk_pipelines.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="data_path.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="vk_loader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -148,9 +145,6 @@
     </ClInclude>
     <ClInclude Include="lib\imgui\imgui_stdlib.h">
       <Filter>Header Files\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="data_path.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vk_loader.h">
       <Filter>Header Files</Filter>

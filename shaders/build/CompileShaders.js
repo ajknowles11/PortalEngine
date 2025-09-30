@@ -66,8 +66,7 @@ else
         {
             if (file == 'build' || validExts.indexOf(path.extname(file)) < 0)
             {
-                // Skip
-                console.log("Skipping file %s", file);
+                // Skip irrelevant dir or file
                 resolve();
                 return;
             }
