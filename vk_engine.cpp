@@ -278,7 +278,8 @@ void VulkanEngine::queueLoadScene(std::string const filePath)
 {
 	getCurrentFrame().postFrameQueue.pushFunction([this, filePath]()
 		{
-			vkDeviceWaitIdle(device);
+			// TODO make loading async and wait for just end of frame to init
+			vkQueueWaitIdle(graphicsQueue);
 			loadScene(filePath);
 		});
 }
