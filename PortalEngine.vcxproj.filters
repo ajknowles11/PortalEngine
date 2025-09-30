@@ -163,32 +163,26 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="shaders\glsl\gradient.comp">
-      <Filter>Shader Files</Filter>
-    </None>
     <None Include="lib\imgui\imgui.natstepfilter" />
-    <None Include="shaders\glsl\sky.comp">
+    <None Include="shaders\build\CompileShaders.js">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="shaders\glsl\colored_triangle.frag">
+    <None Include="shaders\gradient.comp">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="shaders\glsl\colored_triangle.vert">
+    <None Include="shaders\input_structures.glsl">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="shaders\glsl\colored_triangle_mesh.vert">
+    <None Include="shaders\mesh.frag">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="shaders\glsl\tex_image.frag">
+    <None Include="shaders\mesh.vert">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="shaders\glsl\input_structures.glsl">
+    <None Include="shaders\sky.comp">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="shaders\glsl\mesh.vert">
-      <Filter>Shader Files</Filter>
-    </None>
-    <None Include="shaders\glsl\mesh.frag">
+    <None Include="shaders\tex_image.frag">
       <Filter>Shader Files</Filter>
     </None>
   </ItemGroup>

@@ -217,7 +217,7 @@ public:
 
 	DrawContext mainDrawContext;
 
-	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
+	Scene scene;
 	bool indirectDrawInitialized = false;
 
 	AllocatedBuffer drawIndirectCommandBuffer;

@@ -384,9 +384,9 @@ void VulkanEngine::updateScene(float const delta)
 		mainDrawContext.OpaqueSurfaces.clear();
 		mainDrawContext.TransparentSurfaces.clear();
 
-		for (auto const& scene : loadedScenes)
+		if (scene.staticGeometry) 
 		{
-			scene.second->draw(glm::mat4{ 1.0f }, mainDrawContext);
+			scene.staticGeometry->draw(glm::mat4{ 1.0f }, mainDrawContext);
 		}
 
 		// Sort opaques by material and mesh
@@ -654,13 +654,13 @@ void VulkanEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& fu
 
 void VulkanEngine::initScene(std::shared_ptr<LoadedGLTF> const newScene)
 {
-	loadedScenes["0"] = newScene;
+	scene.staticGeometry = newScene;
 }
 
 void VulkanEngine::cleanupScene() 
 {
 	sceneDeletionQueue.flush();
-	loadedScenes.clear();
+	scene.staticGeometry = nullptr;
 	indirectDrawInitialized = false;
 }
 

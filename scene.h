@@ -4,7 +4,6 @@
 
 class Scene 
 {
-	Scene(std::string_view path);
-
+public:
 	std::shared_ptr<LoadedGLTF> staticGeometry;
 };

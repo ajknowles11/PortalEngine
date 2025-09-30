@@ -30,6 +30,6 @@ void main()
 	vec3 color = inColor * texColor.xyz;
 	vec3 ambient = color *  sceneData.ambientColor.xyz;
 
-	//outFragColor = vec4(color * lightValue *  sceneData.sunlightColor.w + ambient ,1.0f);
-	outFragColor = vec4(color, 1.0f);
+	outFragColor = vec4(color * lightValue *  sceneData.sunlightColor.w + ambient ,1.0f);
+	//outFragColor = vec4(color, 1.0f);
 }
