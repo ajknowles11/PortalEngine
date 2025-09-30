@@ -463,10 +463,6 @@ void VulkanEngine::updateScene(float const delta)
 	stats.meshDrawTime = static_cast<float>(elapsed.count()) / 1000.0f;
 }
 
-static const SDL_DialogFileFilter dialogFileFilters[] = {
-	{ "GLTF files",  "gltf;glb" }
-};
-
 static void SDLCALL openSceneFile(void* userData, char const* const* fileList, int filter)
 {
 	if (!fileList) {
