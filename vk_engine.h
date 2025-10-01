@@ -215,6 +215,7 @@ public:
 	VkDescriptorSetLayout singleImageDescriptorLayout;
 
 	MaterialInstance defaultData;
+	std::shared_ptr<GLTFMaterial> defaultMaterial;
 	GLTFMetallic_Roughness metalRoughMaterial;
 
 	DrawContext mainDrawContext;

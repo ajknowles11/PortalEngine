@@ -242,8 +242,6 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3},
 		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1} };
 
-	file.descriptorPool.init(engine->device, static_cast<uint32_t>(gltf.materials.size()), sizes);
-
 	if (gltf.samplers.empty())
 	{
 		VkSamplerCreateInfo samplerInfo
@@ -317,60 +315,64 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 
 	std::cout << "> textures loaded in " << elapsed << "." << std::endl;
 
-	file.materialDataBuffer = engine->createBuffer(sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-	int data_index = 0;
-	auto sceneMaterialConstants = static_cast<GLTFMetallic_Roughness::MaterialConstants*>(file.materialDataBuffer.info.pMappedData);
-
-	for (fastgltf::Material& mat : gltf.materials)
+	if (!gltf.materials.empty())
 	{
-		auto newMat = std::make_shared<GLTFMaterial>();
-		materials.push_back(newMat);
-		file.materials[mat.name.c_str()] = newMat;
+		file.descriptorPool.init(engine->device, static_cast<uint32_t>(gltf.materials.size()), sizes);
+		file.materialDataBuffer = engine->createBuffer(sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		int data_index = 0;
+		auto sceneMaterialConstants = static_cast<GLTFMetallic_Roughness::MaterialConstants*>(file.materialDataBuffer.info.pMappedData);
 
-		GLTFMetallic_Roughness::MaterialConstants constants{};
-		constants.colorFactors.x = mat.pbrData.baseColorFactor[0];
-		constants.colorFactors.y = mat.pbrData.baseColorFactor[1];
-		constants.colorFactors.z = mat.pbrData.baseColorFactor[2];
-		constants.colorFactors.w = mat.pbrData.baseColorFactor[3];
-
-		constants.metal_rough_factors.x = mat.pbrData.metallicFactor;
-		constants.metal_rough_factors.y = mat.pbrData.roughnessFactor;
-		// write material parameters to buffer
-		sceneMaterialConstants[data_index] = constants;
-
-		auto passType = MaterialPass::MainColor;
-		if (mat.alphaMode == fastgltf::AlphaMode::Blend) 
+		for (fastgltf::Material& mat : gltf.materials)
 		{
-			passType = MaterialPass::Transparent;
+			auto newMat = std::make_shared<GLTFMaterial>();
+			materials.push_back(newMat);
+			file.materials[mat.name.c_str()] = newMat;
+
+			GLTFMetallic_Roughness::MaterialConstants constants{};
+			constants.colorFactors.x = mat.pbrData.baseColorFactor[0];
+			constants.colorFactors.y = mat.pbrData.baseColorFactor[1];
+			constants.colorFactors.z = mat.pbrData.baseColorFactor[2];
+			constants.colorFactors.w = mat.pbrData.baseColorFactor[3];
+
+			constants.metal_rough_factors.x = mat.pbrData.metallicFactor;
+			constants.metal_rough_factors.y = mat.pbrData.roughnessFactor;
+			// write material parameters to buffer
+			sceneMaterialConstants[data_index] = constants;
+
+			auto passType = MaterialPass::MainColor;
+			if (mat.alphaMode == fastgltf::AlphaMode::Blend)
+			{
+				passType = MaterialPass::Transparent;
+			}
+
+			GLTFMetallic_Roughness::MaterialResources materialResources{};
+			// default the material textures
+			materialResources.colorImage = engine->whiteImage;
+			materialResources.colorSampler = engine->defaultSamplerLinear;
+			materialResources.metalRoughImage = engine->whiteImage;
+			materialResources.metalRoughSampler = engine->defaultSamplerLinear;
+
+			// set the uniform buffer for the material data
+			materialResources.dataBuffer = file.materialDataBuffer.buffer;
+			materialResources.dataBufferOffset = data_index * sizeof(GLTFMetallic_Roughness::MaterialConstants);
+			// grab textures from gltf file
+			if (mat.pbrData.baseColorTexture.has_value())
+			{
+				size_t img = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].imageIndex.value();
+				size_t sample = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.has_value() ?
+					gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.value() : 0;
+
+				materialResources.colorImage = images[img];
+				materialResources.colorSampler = file.samplers[sample];
+			}
+			// build material
+			newMat->data = engine->metalRoughMaterial.writeMaterial(engine->device, passType, materialResources, file.descriptorPool);
+
+			data_index++;
 		}
-
-		GLTFMetallic_Roughness::MaterialResources materialResources{};
-		// default the material textures
-		materialResources.colorImage = engine->whiteImage;
-		materialResources.colorSampler = engine->defaultSamplerLinear;
-		materialResources.metalRoughImage = engine->whiteImage;
-		materialResources.metalRoughSampler = engine->defaultSamplerLinear;
-
-		// set the uniform buffer for the material data
-		materialResources.dataBuffer = file.materialDataBuffer.buffer;
-		materialResources.dataBufferOffset = data_index * sizeof(GLTFMetallic_Roughness::MaterialConstants);
-		// grab textures from gltf file
-		if (mat.pbrData.baseColorTexture.has_value()) 
-		{
-			size_t img = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].imageIndex.value();
-			size_t sample = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.has_value() ? 
-				gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.value() : 0;
-
-			materialResources.colorImage = images[img];
-			materialResources.colorSampler = file.samplers[sample];
-		}
-		// build material
-		newMat->data = engine->metalRoughMaterial.writeMaterial(engine->device, passType, materialResources, file.descriptorPool);
-
-		data_index++;
 	}
-
+	
 	currentTime = std::chrono::high_resolution_clock::now();
 	elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastTime);
 	lastTime = currentTime;
@@ -471,9 +473,13 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 			{
 				newSurface.material = materials[p.materialIndex.value()];
 			}
-			else 
+			else if (!materials.empty())
 			{
 				newSurface.material = materials[0];
+			}
+			else
+			{
+				newSurface.material = engine->defaultMaterial;
 			}
 
 			glm::vec3 minPos = vertices[initialVtx].position;

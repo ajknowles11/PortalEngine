@@ -1058,6 +1058,9 @@ void VulkanEngine::initDefaultData()
 	materialResources.dataBufferOffset = 0;
 
 	defaultData = metalRoughMaterial.writeMaterial(device, MaterialPass::MainColor, materialResources, globalDescriptorAllocator);
+	
+	defaultMaterial = std::make_shared<GLTFMaterial>();
+	defaultMaterial->data = defaultData;
 }
 
 void VulkanEngine::initImgui()
