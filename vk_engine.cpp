@@ -1226,7 +1226,7 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	MaterialInstance* lastMaterial = nullptr;
 	VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
 
-	auto draw = [&](RenderObject const& object, size_t cmdIdx)
+	auto drawIndirect = [&](RenderObject const& object, size_t cmdIdx)
 	{
 		if (object.material != lastMaterial)
 		{
@@ -1289,16 +1289,19 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	};
 
 	size_t cmdIdx = 0;
-	for (auto r : mainDrawContext.OpaqueSurfaces)
+	for (auto const &r : mainDrawContext.OpaqueSurfaces)
 	{
-		draw(r, cmdIdx);
+		drawIndirect(r, cmdIdx);
 		++cmdIdx;
 	}
-	for (auto r : mainDrawContext.TransparentSurfaces)
+	for (auto const &r : mainDrawContext.TransparentSurfaces)
 	{
-		draw(r, cmdIdx);
+		drawIndirect(r, cmdIdx);
 		++cmdIdx;
 	}
+
+	// DEBUG DRAW
+
 
 	vkCmdEndRendering(cmd);
 
