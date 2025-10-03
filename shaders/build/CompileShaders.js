@@ -15,7 +15,7 @@ else
     const useTimestamps = process.argv.length < 6 || process.argv[5] != '--noTimestamps';
 
     const timestampFile = outputDir + 'ShaderCompileTimes.json';
-    var timestampDict = {};
+    var timestampMap = new Map();
 
     const fs = require('fs');
 
@@ -32,12 +32,12 @@ else
             }
 
             var result = JSON.parse(data);
-            if (result.empty)
+            if (result.length == 0)
             {
                 return;
             }
 
-            timestampDict = result[0];
+            timestampMap = new Map(Object.entries(result));
         }
         catch (err)
         {
@@ -60,7 +60,9 @@ else
 
     const validExts = ['.frag', '.vert', '.comp'];
 
-    var anyModified = false;
+    // Resolve undefined if we skip file (either not a shader, or already up-to-date)
+    // Resolve with timestamp map entry (file, mtime) if shader compiled
+    // Reject if error (compilation failed)
     function tryCompileShader(dir, file)
     {
         return new Promise((resolve, reject) =>
@@ -77,23 +79,9 @@ else
 
                 // Compare edit time with dictionary
                 var stats = fs.statSync(relFile);
-                var mtime = stats.mtime;
+                var mtime = stats.mtime.getTime();
 
-                var newModified = false;
-                if (!useTimestamps || !(file in timestampDict))
-                {
-                    newModified = true;
-                }
-                else
-                {
-                    var lastTime = (new Date(timestampDict[file])).getTime();
-                    if (mtime != lastTime)
-                    {
-                        newModified = true;
-                    }
-                }
-
-                if (newModified)
+                if (!useTimestamps || !timestampMap.has(file) || mtime != timestampMap.get(file))
                 {
                     // Compile the shader to spv in output directory
                     var spv = outputDir + file + '.spv';
@@ -108,31 +96,41 @@ else
 
                         console.log("Compiled shader %s", file);
 
-                        // If compilation succeeded we write the new timestamp to dictionary
-                        anyModified = true;
-
-                        if (useTimestamps)
-                        {
-                            timestampDict[file] = mtime;
-                        }
-
-                        resolve();
+                        resolve([file, mtime]);
                         return;
                     });
+                }
+                else
+                {
+                    resolve();
+                    return;
                 }
             }
         });
     }
 
     const files = fs.readdirSync(inputDir);
-    Promise.allSettled(files.map(file => tryCompileShader(inputDir, file))).then((values) =>
+    Promise.allSettled(files.map(file => tryCompileShader(inputDir, file))).then((results) =>
     {
         // SAVE NEW TIMESTAMPS TO FILE
+        var anyModified = false;
+        results.forEach(result =>
+        {
+            if (result.status == "fulfilled" && result.value != undefined)
+            {
+                anyModified = true;
+                if (useTimestamps)
+                {
+                    timestampMap[result.value[0]] = result.value[1];
+                }
+            }
+        });
+
         if (anyModified)
         {
             if (useTimestamps)
             {
-                fs.writeFile(timestampFile, JSON.stringify(timestampDict), function (err)
+                fs.writeFile(timestampFile, JSON.stringify(timestampMap), function (err)
                 {
                     if (err)
                     {
