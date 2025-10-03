@@ -17,6 +17,10 @@
 #include <glm/vec4.hpp>
 
 #ifdef _DEBUG
+#define VMA_LEAK_LOG_FORMAT(format, ...) do { \
+        printf((format), __VA_ARGS__); \
+        printf("\n"); \
+    } while(false)
 #include <iostream>
 #define VK_CHECK(x)                                                                   \
     do {                                                                              \

@@ -388,6 +388,29 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 	{
 		auto newMesh = std::make_shared<MeshAsset>();
 		meshes.push_back(newMesh);
+		// We should require meshes to be uniquely named
+		// But for now I'll just warn and add parentheses. 
+		// This is really slow but don't give me bad gltf files.
+		if (file.meshes.contains(mesh.name.c_str()))
+		{
+			std::string newName = mesh.name.c_str();
+			newName.append(" (1)");
+			int i = 1;
+			while (file.meshes.contains(newName))
+			{
+				// Remove end chars to give room for parentheses
+				newName.pop_back();
+				for (int j = 0; j <= i / 10; j++)
+				{
+					newName.pop_back();
+				}
+				++i;
+				newName.append(std::to_string(i) + ")");
+			}
+			std::cerr << "Warning: mesh name " + mesh.name + " already in use. Renaming to ";
+			std::cerr << newName + ".\n";
+			mesh.name = newName;
+		}
 		file.meshes[mesh.name.c_str()] = newMesh;
 		newMesh->name = mesh.name;
 
