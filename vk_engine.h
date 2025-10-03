@@ -218,6 +218,10 @@ public:
 	std::shared_ptr<GLTFMaterial> defaultMaterial;
 	GLTFMetallic_Roughness metalRoughMaterial;
 
+	MaterialPipeline defaultPipeline;
+	VkDescriptorSetLayout defaultDescriptorLayout;
+	RenderObject cube;
+
 	DrawContext mainDrawContext;
 
 	Scene scene;
@@ -262,6 +266,7 @@ private:
 
 	void initPipelines();
 	void initBackgroundPipelines();
+	void initDebugPipelines();
 	//void initMeshPipeline();
 
 	void initDefaultData();

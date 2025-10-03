@@ -60,6 +60,7 @@ else
 
     const validExts = ['.frag', '.vert', '.comp'];
 
+    var anyModified = false;
     function tryCompileShader(dir, file)
     {
         return new Promise((resolve, reject) =>
@@ -122,8 +123,6 @@ else
             }
         });
     }
-
-    var anyModified = false;
 
     const files = fs.readdirSync(inputDir);
     Promise.allSettled(files.map(file => tryCompileShader(inputDir, file))).then((values) =>

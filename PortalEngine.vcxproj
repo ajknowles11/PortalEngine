@@ -206,6 +206,8 @@
   <ItemGroup>
     <None Include="lib\imgui\imgui.natstepfilter" />
     <None Include="shaders\build\CompileShaders.js" />
+    <None Include="shaders\default.frag" />
+    <None Include="shaders\default.vert" />
     <None Include="shaders\gradient.comp" />
     <None Include="shaders\input_structures.glsl" />
     <None Include="shaders\mesh.frag" />

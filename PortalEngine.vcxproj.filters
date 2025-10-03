@@ -179,6 +179,12 @@
     <None Include="shaders\tex_image.frag">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="shaders\default.frag">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shaders\default.vert">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="lib\imgui\imgui.natvis" />

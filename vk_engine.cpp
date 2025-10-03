@@ -902,6 +902,8 @@ void VulkanEngine::initPipelines()
 	initBackgroundPipelines();
 
 	metalRoughMaterial.buildPipelines(this);
+
+	initDebugPipelines();
 }
 
 void VulkanEngine::initBackgroundPipelines()
@@ -991,6 +993,72 @@ void VulkanEngine::initBackgroundPipelines()
 	});
 }
 
+void VulkanEngine::initDebugPipelines()
+{
+	VkShaderModule defaultVertShader;
+	if (!vkUtil::load_shader_module((baseAppPath + "shaders/default.vert.spv").c_str(), device, &defaultVertShader))
+	{
+		std::cerr << "Error when building default vertex shader module";
+	}
+
+	VkShaderModule defaultFragShader;
+	if (!vkUtil::load_shader_module((baseAppPath + "shaders/default.frag.spv").c_str(), device, &defaultFragShader))
+	{
+		std::cerr << "Error when building default fragment shader module";
+	}
+
+	VkPushConstantRange matrixRange
+	{
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+		.offset = 0,
+		.size = sizeof(GPUDrawPushConstants)
+	};
+
+	DescriptorLayoutBuilder layoutBuilder;
+	layoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+
+	defaultDescriptorLayout = layoutBuilder.build(device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+
+	VkDescriptorSetLayout layouts[] = { gpuSceneDataDescriptorLayout, defaultDescriptorLayout };
+
+	VkPipelineLayoutCreateInfo defaultLayoutInfo = vkInit::pipeline_layout_create_info();
+	defaultLayoutInfo.setLayoutCount = 2;
+	defaultLayoutInfo.pSetLayouts = layouts;
+	defaultLayoutInfo.pPushConstantRanges = &matrixRange;
+	defaultLayoutInfo.pushConstantRangeCount = 1;
+
+	VkPipelineLayout newLayout;
+	VK_CHECK(vkCreatePipelineLayout(device, &defaultLayoutInfo, nullptr, &newLayout));
+
+	defaultPipeline.layout = newLayout;
+
+	PipelineBuilder pipelineBuilder;
+	pipelineBuilder.setShaders(defaultVertShader, defaultFragShader);
+	pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+	pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
+	pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	pipelineBuilder.setMultisamplingNone();
+	pipelineBuilder.enableBlendingSubtract();
+	pipelineBuilder.enableDepthTest(false, VK_COMPARE_OP_ALWAYS);
+
+	pipelineBuilder.setColorAttachmentFormat(drawImage.imageFormat);
+	pipelineBuilder.setDepthFormat(depthImage.imageFormat);
+
+	pipelineBuilder.pipelineLayout = newLayout;
+
+	defaultPipeline.pipeline = pipelineBuilder.buildPipeline(device);
+
+	vkDestroyShaderModule(device, defaultVertShader, nullptr);
+	vkDestroyShaderModule(device, defaultFragShader, nullptr);
+
+	mainDeletionQueue.pushFunction([&]()
+	{
+		vkDestroyDescriptorSetLayout(device, defaultDescriptorLayout, nullptr);
+		vkDestroyPipelineLayout(device, defaultPipeline.layout, nullptr);
+		vkDestroyPipeline(device, defaultPipeline.pipeline, nullptr);
+	});
+}
+
 void VulkanEngine::initDefaultData()
 {
 	uint32_t const white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
@@ -1061,6 +1129,67 @@ void VulkanEngine::initDefaultData()
 	
 	defaultMaterial = std::make_shared<GLTFMaterial>();
 	defaultMaterial->data = defaultData;
+
+	// Make debug shapes
+	glm::vec4 vertices[] = { {-0.5f, -0.5f, -0.5f, 1.0f}, {-0.5f, -0.5f, 0.5f, 1.0f}, {-0.5f, 0.5f, -0.5f, 1.0f}, {-0.5f, 0.5f, 0.5f, 1.0f}, {0.5f, -0.5f, -0.5f, 1.0f}, {0.5f, -0.5f, 0.5f, 1.0f}, {0.5f, 0.5f, -0.5f, 1.0f}, {0.5f, 0.5f, 0.5f, 1.0f} };
+	uint32_t indices[] = {0, 1, 0, 2, 1, 3, 2, 3, 0, 4, 2, 6, 1, 5, 3, 7, 4, 5, 4, 6, 5, 7, 6, 7};
+
+	size_t vertexBufferSize = 8 * sizeof(glm::vec4);
+	size_t indexBufferSize = 24 * sizeof(uint32_t);
+
+	AllocatedBuffer vertexBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+		VMA_MEMORY_USAGE_GPU_ONLY);
+
+	VkBufferDeviceAddressInfo const deviceAddressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = vertexBuffer.buffer };
+	VkDeviceAddress vertexBufferAddress = vkGetBufferDeviceAddress(device, &deviceAddressInfo);
+
+	AllocatedBuffer indexBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+
+	AllocatedBuffer const staging = createBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+	void* data = staging.allocation->GetMappedData();
+
+	memcpy(data, vertices, vertexBufferSize);
+	memcpy(static_cast<char*>(data) + vertexBufferSize, indices, indexBufferSize);
+
+	immediateSubmit([&](VkCommandBuffer const cmd)
+		{
+			VkBufferCopy const vertexCopy
+			{
+				.srcOffset = 0,
+				.dstOffset = 0,
+				.size = vertexBufferSize
+			};
+			vkCmdCopyBuffer(cmd, staging.buffer, vertexBuffer.buffer, 1, &vertexCopy);
+
+			VkBufferCopy const indexCopy
+			{
+				.srcOffset = vertexBufferSize,
+				.dstOffset = 0,
+				.size = indexBufferSize
+			};
+			vkCmdCopyBuffer(cmd, staging.buffer, indexBuffer.buffer, 1, &indexCopy);
+		});
+
+	destroyBuffer(staging);
+
+	cube.indexBuffer = indexBuffer.buffer;
+	cube.vertexBufferAddress = vertexBufferAddress;
+
+	cube.indexCount = 24;
+	cube.firstIndex = 0;
+	cube.bounds = {
+		.origin = glm::vec3(),
+		.sphereRadius = sqrt(3.0f) * 0.5f,
+		.extents = glm::vec3(0.5f, 0.5f, 0.5f)
+	};
+	cube.transform = glm::mat4(1.0f);
+
+	mainDeletionQueue.pushFunction([=, this]()
+	{
+			destroyBuffer(indexBuffer);
+			destroyBuffer(vertexBuffer);
+	});
 }
 
 void VulkanEngine::initImgui()
@@ -1282,7 +1411,6 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 		uint32_t stride = sizeof(VkDrawIndexedIndirectCommand);
 
 		vkCmdDrawIndexedIndirect(cmd, drawIndirectCommandBuffer.buffer, indirectOffset, 1, stride);
-		//vkCmdDrawIndexed(cmd, object.indexCount, 1, object.firstIndex, 0, 0);
 
 		stats.drawCallCount++;
 		stats.triangleCount += static_cast<int>(object.indexCount) / 3;
@@ -1300,8 +1428,60 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 		++cmdIdx;
 	}
 
-	// DEBUG DRAW
+	bool boundDebugPipeline = false;
+	auto debugDraw = [&](RenderObject const& object, size_t cmdIdx)
+	{
+		if (!boundDebugPipeline)
+		{
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultPipeline.pipeline);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, defaultPipeline.layout, 0, 1, &globalDescriptor, 0, nullptr);
 
+			VkViewport const viewport
+			{
+				.x = 0.0f,
+				.y = 0.0f,
+				.width = static_cast<float>(drawExtent.width),
+				.height = static_cast<float>(drawExtent.height),
+				.minDepth = 0.0f,
+				.maxDepth = 1.0f
+			};
+			vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+			VkRect2D const scissor
+			{
+				.offset
+				{
+					.x = 0,
+					.y = 0
+				},
+				.extent
+				{
+					.width = drawExtent.width,
+					.height = drawExtent.height
+				}
+			};
+			vkCmdSetScissor(cmd, 0, 1, &scissor);
+		}
+		boundDebugPipeline = true;
+
+		if (object.indexBuffer != lastIndexBuffer)
+		{
+			lastIndexBuffer = object.indexBuffer;
+			vkCmdBindIndexBuffer(cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		}
+
+		GPUDrawPushConstants pushConstants{};
+		pushConstants.worldMatrix = object.transform;
+		pushConstants.vertexBuffer = object.vertexBufferAddress;
+
+		vkCmdPushConstants(cmd, defaultPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+
+		vkCmdDrawIndexed(cmd, object.indexCount, 1, 0, 0, 0);
+
+		stats.drawCallCount++;
+	};
+	debugDraw(cube, cmdIdx);
+	++cmdIdx;
 
 	vkCmdEndRendering(cmd);
 

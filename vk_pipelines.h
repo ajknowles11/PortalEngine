@@ -36,6 +36,7 @@ public:
 	void setMultisamplingNone();
 	void enableBlendingAdditive();
 	void enableBlendingAlphaBlend();
+	void enableBlendingSubtract();
 	void disableBlending();
 	void setColorAttachmentFormat(VkFormat format);
 	void setDepthFormat(VkFormat format);
