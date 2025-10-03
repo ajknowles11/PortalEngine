@@ -141,6 +141,8 @@ public:
 		Detached    // Control main cam but view from free cam
 	} cameraMode = Default;
 
+	bool debugDrawFrustum = false;
+
 	bool vSyncEnabled = false;
 
 	EngineStats stats;

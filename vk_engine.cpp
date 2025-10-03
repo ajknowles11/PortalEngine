@@ -598,6 +598,7 @@ void VulkanEngine::run()
 			{
 				freeCamera = mainCamera;
 			}
+			ImGui::Checkbox("Draw Frustum", &debugDrawFrustum);
 		}
 		ImGui::End();
 
@@ -1480,8 +1481,13 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 
 		stats.drawCallCount++;
 	};
-	debugDraw(cube, cmdIdx);
-	++cmdIdx;
+	
+	if (debugDrawFrustum)
+	{
+		cube.transform = glm::inverse(sceneData.cullViewProj);
+		debugDraw(cube, cmdIdx);
+		++cmdIdx;
+	}
 
 	vkCmdEndRendering(cmd);
 
