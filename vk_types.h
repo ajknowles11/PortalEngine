@@ -56,6 +56,7 @@ struct Vertex
 	glm::vec3 normal;
 	float uv_y;
 	glm::vec4 color;
+	glm::vec4 surfaceTangent; // w ignored
 };
 
 struct GPUMeshBuffers
@@ -67,7 +68,8 @@ struct GPUMeshBuffers
 
 struct GPUDrawPushConstants
 {
-	glm::mat4 worldMatrix;
+	glm::mat4 modelMatrix;
+	glm::mat4 normalMatrix;
 	VkDeviceAddress vertexBuffer;
 };
 
@@ -127,6 +129,7 @@ struct Node : public IRenderable
 struct GPUSceneData
 {
 	glm::mat4 view;
+	glm::mat4 invView;
 	glm::mat4 proj;
 	glm::mat4 viewProj;
 	glm::mat4 cullViewProj;

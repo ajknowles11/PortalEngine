@@ -84,27 +84,29 @@ struct MeshNode : public Node
 	virtual void draw(glm::mat4 const& topMatrix, DrawContext& ctx) override;
 };
 
-struct GLTFMetallic_Roughness
+struct PBRMaterial
 {
 	MaterialPipeline opaquePipeline;
 	MaterialPipeline transparentPipeline;
 
 	VkDescriptorSetLayout materialLayout;
 
-	struct MaterialConstants 
+	struct MaterialConstants
 	{
 		glm::vec4 colorFactors;
-		glm::vec4 metal_rough_factors;
+		glm::vec4 metalRoughFactors;
 
 		glm::vec4 extra[14];
 	};
 
 	struct MaterialResources
 	{
-		AllocatedImage colorImage;
-		VkSampler colorSampler;
-		AllocatedImage metalRoughImage;
-		VkSampler metalRoughSampler;
+		AllocatedImage albedoImage;
+		VkSampler albedoSampler;
+		AllocatedImage normalImage;
+		VkSampler normalSampler;
+		AllocatedImage metalRoughAOImage;
+		VkSampler metalRoughAOSampler;
 		VkBuffer dataBuffer;
 		uint32_t dataBufferOffset;
 	};
@@ -210,6 +212,7 @@ public:
 	AllocatedImage blackImage;
 	AllocatedImage grayImage;
 	AllocatedImage errorCheckerboardImage;
+	AllocatedImage defaultNormalImage;
 
 	VkSampler defaultSamplerLinear;
 	VkSampler defaultSamplerNearest;
@@ -218,7 +221,7 @@ public:
 
 	MaterialInstance defaultData;
 	std::shared_ptr<GLTFMaterial> defaultMaterial;
-	GLTFMetallic_Roughness metalRoughMaterial;
+	PBRMaterial pbrMaterial;
 
 	MaterialPipeline defaultPipeline;
 	VkDescriptorSetLayout defaultDescriptorLayout;

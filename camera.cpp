@@ -94,6 +94,13 @@ glm::mat4 Camera::getViewMatrix()
 	return glm::inverse(cameraTranslation * cameraRotation);
 }
 
+glm::mat4 Camera::getInvViewMatrix()
+{
+	glm::mat4 cameraTranslation = glm::translate(glm::mat4(1.0f), position);
+	glm::mat4 cameraRotation = getRotationMatrix();
+	return cameraTranslation * cameraRotation;
+}
+
 glm::mat4 Camera::getRotationMatrix()
 {
 	glm::quat pitchRotation = glm::angleAxis(pitch, glm::vec3{ 1.0f, 0.0f, 0.0f });

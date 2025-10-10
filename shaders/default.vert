@@ -18,15 +18,16 @@ layout(buffer_reference, std430) readonly buffer VertexBuffer
 	vec4 vertices[];
 };
 
-layout( push_constant ) uniform constants
+layout( push_constant ) uniform PushConstants
 {
-	mat4 render_matrix;
+	mat4 modelMat;
+	mat4 normalMat;
 	VertexBuffer vertexBuffer;
-} PushConstants;
+} constants;
 
 void main() 
 {
-	vec4 position = PushConstants.vertexBuffer.vertices[gl_VertexIndex];
+	vec4 position = constants.vertexBuffer.vertices[gl_VertexIndex];
 
-	gl_Position =  sceneData.viewProj * PushConstants.render_matrix * position;
+	gl_Position =  sceneData.viewProj * constants.modelMat * position;
 }

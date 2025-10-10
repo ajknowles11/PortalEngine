@@ -210,7 +210,7 @@
     <None Include="shaders\default.vert" />
     <None Include="shaders\gradient.comp" />
     <None Include="shaders\input_structures.glsl" />
-    <None Include="shaders\mesh.frag" />
+    <None Include="shaders\lit.frag" />
     <None Include="shaders\mesh.vert" />
     <None Include="shaders\sky.comp" />
     <None Include="shaders\tex_image.frag" />

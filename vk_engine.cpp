@@ -100,7 +100,7 @@ void MeshNode::draw(glm::mat4 const& topMatrix, DrawContext& ctx)
 	Node::draw(topMatrix, ctx);
 }
 
-void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine) 
+void PBRMaterial::buildPipelines(VulkanEngine* engine) 
 {
 	VkShaderModule meshVertShader;
 	if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/mesh.vert.spv").c_str(), engine->device, &meshVertShader))
@@ -109,7 +109,7 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	}
 
 	VkShaderModule meshFragShader;
-	if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/mesh.frag.spv").c_str(), engine->device, &meshFragShader))
+	if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/lit.frag.spv").c_str(), engine->device, &meshFragShader))
 	{
 		std::cerr << "Error when building triangle fragment shader module";
 	}
@@ -125,6 +125,7 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	layoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 	layoutBuilder.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 	layoutBuilder.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	layoutBuilder.addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
 	materialLayout = layoutBuilder.build(engine->device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
@@ -146,7 +147,7 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	pipelineBuilder.setShaders(meshVertShader, meshFragShader);
 	pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 	pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
-	pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	pipelineBuilder.setCullMode(VK_CULL_MODE_FRONT_BIT, VK_FRONT_FACE_CLOCKWISE);
 	pipelineBuilder.setMultisamplingNone();
 	pipelineBuilder.disableBlending();
 	pipelineBuilder.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
@@ -167,7 +168,7 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	vkDestroyShaderModule(engine->device, meshFragShader, nullptr);
 }
 
-void GLTFMetallic_Roughness::clearResources(VkDevice device)
+void PBRMaterial::clearResources(VkDevice device)
 {
 	vkDestroyDescriptorSetLayout(device, materialLayout, nullptr);
 	vkDestroyPipelineLayout(device, transparentPipeline.layout, nullptr);
@@ -176,7 +177,7 @@ void GLTFMetallic_Roughness::clearResources(VkDevice device)
 	vkDestroyPipeline(device, opaquePipeline.pipeline, nullptr);
 }
 
-MaterialInstance GLTFMetallic_Roughness::writeMaterial(VkDevice device, MaterialPass pass, MaterialResources const& resources, DescriptorAllocatorGrowable& descriptorAllocator)
+MaterialInstance PBRMaterial::writeMaterial(VkDevice device, MaterialPass pass, MaterialResources const& resources, DescriptorAllocatorGrowable& descriptorAllocator)
 {
 	MaterialInstance matData{};
 	matData.passType = pass;
@@ -193,8 +194,9 @@ MaterialInstance GLTFMetallic_Roughness::writeMaterial(VkDevice device, Material
 
 	writer.clear();
 	writer.writeBuffer(0, resources.dataBuffer, sizeof(MaterialConstants), resources.dataBufferOffset, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-	writer.writeImage(1, resources.colorImage.imageView, resources.colorSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-	writer.writeImage(2, resources.metalRoughImage.imageView, resources.metalRoughSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	writer.writeImage(1, resources.albedoImage.imageView, resources.albedoSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	writer.writeImage(2, resources.normalImage.imageView, resources.normalSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	writer.writeImage(3, resources.metalRoughAOImage.imageView, resources.metalRoughAOSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
 	writer.updateSet(device, matData.materialSet);
 
@@ -258,7 +260,7 @@ void VulkanEngine::cleanup()
 			frames[i].deletionQueue.flush();
 		}
 
-		metalRoughMaterial.clearResources(device);
+		pbrMaterial.clearResources(device);
 
 		mainDeletionQueue.flush();
 
@@ -444,19 +446,16 @@ void VulkanEngine::updateScene(float const delta)
 	if (cameraMode == Default)
 	{
 		sceneData.view = mainCamView;
+		sceneData.invView = mainCamera.getInvViewMatrix();
 	}
 	else
 	{
 		sceneData.view = freeCamera.getViewMatrix();
+		sceneData.invView = freeCamera.getInvViewMatrix();
 	}
-	sceneData.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent.width) / static_cast<float>(drawExtent.height), 10000.0f, 0.01f);
-	sceneData.proj[1][1] *= -1;
+	
 	sceneData.viewProj = sceneData.proj * sceneData.view;
 	sceneData.cullViewProj = sceneData.proj * mainCamView;
-
-	sceneData.ambientColor = glm::vec4(0.1f);
-	sceneData.sunlightColor = glm::vec4(1.0f);
-	sceneData.sunlightDirection = glm::vec4(0, 1, 0.5f, 1.0f);
 
 	auto const end = std::chrono::high_resolution_clock::now();
 	auto const elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
@@ -589,10 +588,11 @@ void VulkanEngine::run()
 
 		if (ImGui::Begin("Camera"))
 		{
+			ImGui::Text("Main Camera Position: %.2f, %.2f, %.2f", mainCamera.position.x, mainCamera.position.y, mainCamera.position.z);
 			int camModeInt = cameraMode;
 			ImGui::SliderInt("Camera Mode", &camModeInt, 0, 2);
 			std::string const modeNames[] = {"Default", "Free", "Detached"};
-			ImGui::Text("Selected mode: %s", modeNames[camModeInt].c_str());
+			ImGui::Text("Selected Mode: %s", modeNames[camModeInt].c_str());
 			cameraMode = static_cast<CameraMode>(camModeInt);
 			if (ImGui::Button("Reset Free Cam View"))
 			{
@@ -612,6 +612,24 @@ void VulkanEngine::run()
 					{ "GLTF files",  "gltf;glb" }
 				};
 				SDL_ShowOpenFileDialog(openSceneFile, this, nullptr, dialogFileFilters, 1, baseAppPath.c_str(), false);
+			}
+
+			float newAmbient[] = { sceneData.ambientColor.r, sceneData.ambientColor.g, sceneData.ambientColor.b };
+			if (ImGui::ColorPicker3("Ambient Color", newAmbient))
+			{
+				sceneData.ambientColor = glm::vec4(newAmbient[0], newAmbient[1], newAmbient[2], 1.0f);
+			}
+
+			float newSunColor[] = { sceneData.sunlightColor.r, sceneData.sunlightColor.g, sceneData.sunlightColor.b };
+			if (ImGui::ColorPicker3("Sun Color", newSunColor))
+			{
+				sceneData.sunlightColor = glm::vec4(newSunColor[0], newSunColor[1], newSunColor[2], 1.0f);
+			}
+
+			float newSunDir[] = { sceneData.sunlightDirection.x, sceneData.sunlightDirection.y, sceneData.sunlightDirection.z, sceneData.sunlightDirection.w };
+			if (ImGui::InputFloat4("Sun Direction", newSunDir))
+			{
+				sceneData.sunlightDirection = glm::vec4(newSunDir[0], newSunDir[1], newSunDir[2], newSunDir[3]);
 			}
 		}
 		ImGui::End();
@@ -652,6 +670,13 @@ void VulkanEngine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& fu
 void VulkanEngine::initScene(std::shared_ptr<LoadedGLTF> const newScene)
 {
 	scene.staticGeometry = newScene;
+
+	sceneData.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent.width) / static_cast<float>(drawExtent.height), 10000.0f, 0.01f);
+	sceneData.proj[1][1] *= -1;
+
+	sceneData.ambientColor = glm::vec4(0.1f);
+	sceneData.sunlightColor = glm::vec4(1.0f);
+	sceneData.sunlightDirection = glm::vec4(0, -1.0, -0.5f, 1.0f);
 }
 
 void VulkanEngine::cleanupScene() 
@@ -902,7 +927,7 @@ void VulkanEngine::initPipelines()
 {
 	initBackgroundPipelines();
 
-	metalRoughMaterial.buildPipelines(this);
+	pbrMaterial.buildPipelines(this);
 
 	initDebugPipelines();
 }
@@ -1084,6 +1109,10 @@ void VulkanEngine::initDefaultData()
 	errorCheckerboardImage = createImage(pixels.data(), VkExtent3D{ 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
 
+	uint32_t const defaultNormal = glm::packUnorm4x8(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f));
+	defaultNormalImage = createImage(&defaultNormal, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+		VK_IMAGE_USAGE_SAMPLED_BIT);
+
 	VkSamplerCreateInfo samplerCreateInfo = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 
 	samplerCreateInfo.magFilter = VK_FILTER_NEAREST;
@@ -1104,29 +1133,32 @@ void VulkanEngine::initDefaultData()
 		destroyImage(grayImage);
 		destroyImage(blackImage);
 		destroyImage(errorCheckerboardImage);
+		destroyImage(defaultNormalImage);
 	});
 
-	GLTFMetallic_Roughness::MaterialResources materialResources;
-	materialResources.colorImage = whiteImage;
-	materialResources.colorSampler = defaultSamplerLinear;
-	materialResources.metalRoughImage = whiteImage;
-	materialResources.metalRoughSampler = defaultSamplerLinear;
+	PBRMaterial::MaterialResources materialResources;
+	materialResources.albedoImage = whiteImage;
+	materialResources.albedoSampler = defaultSamplerLinear;
+	materialResources.normalImage = defaultNormalImage;
+	materialResources.normalSampler = defaultSamplerLinear;
+	materialResources.metalRoughAOImage = whiteImage;
+	materialResources.metalRoughAOSampler = defaultSamplerLinear;
 
-	AllocatedBuffer materialConstants = createBuffer(sizeof(GLTFMetallic_Roughness::MaterialConstants), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	AllocatedBuffer materialConstants = createBuffer(sizeof(PBRMaterial::MaterialConstants), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-	GLTFMetallic_Roughness::MaterialConstants* sceneUniformData = static_cast<GLTFMetallic_Roughness::MaterialConstants*>(materialConstants.allocation->GetMappedData());
+	PBRMaterial::MaterialConstants* sceneUniformData = static_cast<PBRMaterial::MaterialConstants*>(materialConstants.allocation->GetMappedData());
 	sceneUniformData->colorFactors = glm::vec4{ 1,1,1,1 };
-	sceneUniformData->metal_rough_factors = glm::vec4{ 1, 0.5f, 0, 0 };
+	sceneUniformData->metalRoughFactors = glm::vec4{ 1, 0.5f, 0, 0 };
 
 	mainDeletionQueue.pushFunction([=, this]()
-	{
-		destroyBuffer(materialConstants);
-	});
+		{
+			destroyBuffer(materialConstants);
+		});
 
 	materialResources.dataBuffer = materialConstants.buffer;
 	materialResources.dataBufferOffset = 0;
 
-	defaultData = metalRoughMaterial.writeMaterial(device, MaterialPass::MainColor, materialResources, globalDescriptorAllocator);
+	defaultData = pbrMaterial.writeMaterial(device, MaterialPass::MainColor, materialResources, globalDescriptorAllocator);
 	
 	defaultMaterial = std::make_shared<GLTFMaterial>();
 	defaultMaterial->data = defaultData;
@@ -1403,7 +1435,8 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 		}
 
 		GPUDrawPushConstants pushConstants{};
-		pushConstants.worldMatrix = object.transform;
+		pushConstants.modelMatrix = object.transform;
+		pushConstants.normalMatrix = glm::transpose(glm::inverse(glm::mat3(object.transform)));
 		pushConstants.vertexBuffer = object.vertexBufferAddress;
 
 		vkCmdPushConstants(cmd, object.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
@@ -1472,7 +1505,8 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 		}
 
 		GPUDrawPushConstants pushConstants{};
-		pushConstants.worldMatrix = object.transform;
+		pushConstants.modelMatrix = object.transform;
+		pushConstants.normalMatrix = glm::transpose(glm::inverse(glm::mat3(object.transform)));
 		pushConstants.vertexBuffer = object.vertexBufferAddress;
 
 		vkCmdPushConstants(cmd, defaultPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);

@@ -20,6 +20,7 @@ public:
 	SDL_Window* window;
 
 	glm::mat4 getViewMatrix();
+	glm::mat4 getInvViewMatrix();
 	glm::mat4 getRotationMatrix();
 
 	void processSDLEvent(SDL_Event& e);

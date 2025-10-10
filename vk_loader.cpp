@@ -299,6 +299,29 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 
 		if (img.has_value()) {
 			images.push_back(*img);
+			// We should require images to be uniquely named
+			// But for now I'll just warn and add parentheses. 
+			// This is really slow but don't give me bad gltf files.
+			if (file.images.contains(image.name.c_str()))
+			{
+				std::string newName = image.name.c_str();
+				newName.append(" (1)");
+				int i = 1;
+				while (file.images.contains(newName))
+				{
+					// Remove end chars to give room for parentheses
+					newName.pop_back();
+					for (int j = 0; j <= i / 10; j++)
+					{
+						newName.pop_back();
+					}
+					++i;
+					newName.append(std::to_string(i) + ")");
+				}
+				std::cerr << "Warning: image name " + image.name + " already in use. Renaming to ";
+				std::cerr << newName + ".\n";
+				image.name = newName;
+			}
 			file.images[image.name.c_str()] = *img;
 		}
 		else {
@@ -318,10 +341,10 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 	if (!gltf.materials.empty())
 	{
 		file.descriptorPool.init(engine->device, static_cast<uint32_t>(gltf.materials.size()), sizes);
-		file.materialDataBuffer = engine->createBuffer(sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
+		file.materialDataBuffer = engine->createBuffer(sizeof(PBRMaterial::MaterialConstants) * gltf.materials.size(),
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 		int data_index = 0;
-		auto sceneMaterialConstants = static_cast<GLTFMetallic_Roughness::MaterialConstants*>(file.materialDataBuffer.info.pMappedData);
+		auto sceneMaterialConstants = static_cast<PBRMaterial::MaterialConstants*>(file.materialDataBuffer.info.pMappedData);
 
 		for (fastgltf::Material& mat : gltf.materials)
 		{
@@ -329,14 +352,14 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 			materials.push_back(newMat);
 			file.materials[mat.name.c_str()] = newMat;
 
-			GLTFMetallic_Roughness::MaterialConstants constants{};
+			PBRMaterial::MaterialConstants constants{};
 			constants.colorFactors.x = mat.pbrData.baseColorFactor[0];
 			constants.colorFactors.y = mat.pbrData.baseColorFactor[1];
 			constants.colorFactors.z = mat.pbrData.baseColorFactor[2];
 			constants.colorFactors.w = mat.pbrData.baseColorFactor[3];
 
-			constants.metal_rough_factors.x = mat.pbrData.metallicFactor;
-			constants.metal_rough_factors.y = mat.pbrData.roughnessFactor;
+			constants.metalRoughFactors.x = mat.pbrData.metallicFactor;
+			constants.metalRoughFactors.y = mat.pbrData.roughnessFactor;
 			// write material parameters to buffer
 			sceneMaterialConstants[data_index] = constants;
 
@@ -346,16 +369,18 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 				passType = MaterialPass::Transparent;
 			}
 
-			GLTFMetallic_Roughness::MaterialResources materialResources{};
+			PBRMaterial::MaterialResources materialResources{};
 			// default the material textures
-			materialResources.colorImage = engine->whiteImage;
-			materialResources.colorSampler = engine->defaultSamplerLinear;
-			materialResources.metalRoughImage = engine->whiteImage;
-			materialResources.metalRoughSampler = engine->defaultSamplerLinear;
+			materialResources.albedoImage = engine->whiteImage;
+			materialResources.albedoSampler = engine->defaultSamplerLinear;
+			materialResources.normalImage = engine->defaultNormalImage;
+			materialResources.normalSampler = engine->defaultSamplerLinear;
+			materialResources.metalRoughAOImage = engine->whiteImage;
+			materialResources.metalRoughAOSampler = engine->defaultSamplerLinear;
 
 			// set the uniform buffer for the material data
 			materialResources.dataBuffer = file.materialDataBuffer.buffer;
-			materialResources.dataBufferOffset = data_index * sizeof(GLTFMetallic_Roughness::MaterialConstants);
+			materialResources.dataBufferOffset = data_index * sizeof(PBRMaterial::MaterialConstants);
 			// grab textures from gltf file
 			if (mat.pbrData.baseColorTexture.has_value())
 			{
@@ -363,11 +388,29 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 				size_t sample = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.has_value() ?
 					gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.value() : 0;
 
-				materialResources.colorImage = images[img];
-				materialResources.colorSampler = file.samplers[sample];
+				materialResources.albedoImage = images[img];
+				materialResources.albedoSampler = file.samplers[sample];
+			}
+			if (mat.normalTexture.has_value())
+			{
+				size_t img = gltf.textures[mat.normalTexture.value().textureIndex].imageIndex.value();
+				size_t sample = gltf.textures[mat.normalTexture.value().textureIndex].samplerIndex.has_value() ?
+					gltf.textures[mat.normalTexture.value().textureIndex].samplerIndex.value() : 0;
+
+				materialResources.normalImage = images[img];
+				materialResources.normalSampler = file.samplers[sample];
+			}
+			if (mat.pbrData.metallicRoughnessTexture.has_value())
+			{
+				size_t img = gltf.textures[mat.pbrData.metallicRoughnessTexture.value().textureIndex].imageIndex.value();
+				size_t sample = gltf.textures[mat.pbrData.metallicRoughnessTexture.value().textureIndex].samplerIndex.has_value() ?
+					gltf.textures[mat.pbrData.metallicRoughnessTexture.value().textureIndex].samplerIndex.value() : 0;
+
+				materialResources.metalRoughAOImage = images[img];
+				materialResources.metalRoughAOSampler = file.samplers[sample];
 			}
 			// build material
-			newMat->data = engine->metalRoughMaterial.writeMaterial(engine->device, passType, materialResources, file.descriptorPool);
+			newMat->data = engine->pbrMaterial.writeMaterial(engine->device, passType, materialResources, file.descriptorPool);
 
 			data_index++;
 		}
@@ -438,10 +481,12 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 					});
 			}
 
+			size_t vertexCount = 0;
 			// load vertex positions
 			{
 				fastgltf::Accessor& posAccessor = gltf.accessors[p.findAttribute("POSITION")->second];
 				vertices.resize(vertices.size() + posAccessor.count);
+				vertexCount = posAccessor.count;
 
 				fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
 					[&](glm::vec3 const v, size_t const index) 
@@ -490,6 +535,56 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 					{
 						vertices[initialVtx + index].color = v;
 					});
+			}
+
+			auto tangents = p.findAttribute("TANGENT");
+			if (tangents != p.attributes.end())
+			{
+				fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[(*tangents).second],
+					[&](glm::vec4 const v, size_t const index)
+					{
+						vertices[initialVtx + index].surfaceTangent = v;
+					});
+			}
+			else
+			{
+				// calculate tangents ourselves
+				
+				for (size_t index = 0; index < vertexCount; index += 3)
+				{
+					if (index + 2 >= vertexCount)
+					{
+						continue;
+					}
+
+					Vertex& v0 = vertices[initialVtx + index];
+					Vertex& v1 = vertices[initialVtx + index + 1];
+					Vertex& v2 = vertices[initialVtx + index + 2];
+
+					glm::vec3 const e1 = v1.position - v0.position;
+					glm::vec3 const e2 = v2.position - v0.position;
+					glm::vec2 const dUV1 = { v1.uv_x - v0.uv_x, v1.uv_y - v0.uv_y };
+					glm::vec2 const dUV2 = { v2.uv_x - v0.uv_x, v2.uv_y - v0.uv_y };
+
+					float const det = (dUV1.x * dUV2.y - dUV2.x * dUV1.y);
+					if (det == 0)
+					{
+						std::cerr << "Error: degenerate UV coords for mesh: " + mesh.name + ", vertex index " << (initialVtx + index) << "! Normal calculation will be invalid.\n";
+						v0.surfaceTangent = { 1.0f, 0, 0, 0 };
+						v1.surfaceTangent = { 1.0f, 0, 0, 0 };
+						v2.surfaceTangent = { 1.0f, 0, 0, 0 };
+					}
+					else
+					{
+						float const invDet = 1.0f / det;
+						glm::vec3 const tangent = invDet * (dUV2.y * e1 - dUV1.y * e2);
+						// This tangent is not actually orthogonal to normal vector, since vertices have their own normals not necessarily equal to surface normal.
+						// We will perform Gram-Schmidt in vertex shader to fix this.
+						v0.surfaceTangent = glm::vec4(tangent, 0);
+						v1.surfaceTangent = glm::vec4(tangent, 0);
+						v2.surfaceTangent = glm::vec4(tangent, 0);
+					}
+				}
 			}
 
 			if (p.materialIndex.has_value())

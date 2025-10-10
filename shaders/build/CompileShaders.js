@@ -121,7 +121,7 @@ else
                 anyModified = true;
                 if (useTimestamps)
                 {
-                    timestampMap[result.value[0]] = result.value[1];
+                    timestampMap.set(result.value[0], result.value[1]);
                 }
             }
         });
@@ -130,7 +130,9 @@ else
         {
             if (useTimestamps)
             {
-                fs.writeFile(timestampFile, JSON.stringify(timestampMap), function (err)
+                const timestampObj = new Object();
+                timestampMap.forEach((value, key) => timestampObj[key] = value);
+                fs.writeFile(timestampFile, JSON.stringify(timestampObj), function (err)
                 {
                     if (err)
                     {

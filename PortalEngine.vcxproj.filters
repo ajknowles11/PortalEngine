@@ -167,7 +167,7 @@
     <None Include="shaders\input_structures.glsl">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="shaders\mesh.frag">
+    <None Include="shaders\lit.frag">
       <Filter>Shader Files</Filter>
     </None>
     <None Include="shaders\mesh.vert">
