@@ -105,13 +105,19 @@ void PBRMaterial::buildPipelines(VulkanEngine* engine)
 	VkShaderModule meshVertShader;
 	if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/mesh.vert.spv").c_str(), engine->device, &meshVertShader))
 	{
-		std::cerr << "Error when building triangle vertex shader module";
+		std::cerr << "Error when building mesh vertex shader module";
 	}
 
 	VkShaderModule meshFragShader;
 	if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/lit.frag.spv").c_str(), engine->device, &meshFragShader))
 	{
-		std::cerr << "Error when building triangle fragment shader module";
+		std::cerr << "Error when building lit fragment shader module";
+	}
+
+	VkShaderModule normalsFragShader;
+	if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/normals.frag.spv").c_str(), engine->device, &normalsFragShader))
+	{
+		std::cerr << "Error when building normals fragment shader module";
 	}
 
 	VkPushConstantRange matrixRange
@@ -142,6 +148,7 @@ void PBRMaterial::buildPipelines(VulkanEngine* engine)
 
 	opaquePipeline.layout = newLayout;
 	transparentPipeline.layout = newLayout;
+	normalsPipeline.layout = newLayout;
 
 	PipelineBuilder pipelineBuilder;
 	pipelineBuilder.setShaders(meshVertShader, meshFragShader);
@@ -164,15 +171,23 @@ void PBRMaterial::buildPipelines(VulkanEngine* engine)
 
 	transparentPipeline.pipeline = pipelineBuilder.buildPipeline(engine->device);
 
+	pipelineBuilder.disableBlending();
+	pipelineBuilder.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
+	pipelineBuilder.setShaders(meshVertShader, normalsFragShader);
+
+	normalsPipeline.pipeline = pipelineBuilder.buildPipeline(engine->device);
+
 	vkDestroyShaderModule(engine->device, meshVertShader, nullptr);
 	vkDestroyShaderModule(engine->device, meshFragShader, nullptr);
+	vkDestroyShaderModule(engine->device, normalsFragShader, nullptr);
 }
 
 void PBRMaterial::clearResources(VkDevice device)
 {
 	vkDestroyDescriptorSetLayout(device, materialLayout, nullptr);
-	vkDestroyPipelineLayout(device, transparentPipeline.layout, nullptr);
+	vkDestroyPipelineLayout(device, transparentPipeline.layout, nullptr); // same layout used for all pipelines
 
+	vkDestroyPipeline(device, normalsPipeline.pipeline, nullptr);
 	vkDestroyPipeline(device, transparentPipeline.pipeline, nullptr);
 	vkDestroyPipeline(device, opaquePipeline.pipeline, nullptr);
 }
@@ -599,6 +614,7 @@ void VulkanEngine::run()
 				freeCamera = mainCamera;
 			}
 			ImGui::Checkbox("Draw Frustum", &debugDrawFrustum);
+			ImGui::Checkbox("Shade Normals", &debugDrawNormals);
 		}
 		ImGui::End();
 
@@ -1465,7 +1481,44 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 		if (object.material != lastMaterial)
 		{
 			lastMaterial = object.material;
-			if (object.material->pipeline != lastPipeline)
+			if (debugDrawNormals)
+			{
+				if (lastPipeline != &pbrMaterial.normalsPipeline)
+				{
+					lastPipeline = &pbrMaterial.normalsPipeline;
+					vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pbrMaterial.normalsPipeline.pipeline);
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pbrMaterial.normalsPipeline.layout, 0, 1, &globalDescriptor, 0, nullptr);
+
+					VkViewport const viewport
+					{
+						.x = 0.0f,
+						.y = 0.0f,
+						.width = static_cast<float>(drawExtent.width),
+						.height = static_cast<float>(drawExtent.height),
+						.minDepth = 0.0f,
+						.maxDepth = 1.0f
+					};
+					vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+					VkRect2D const scissor
+					{
+						.offset
+						{
+							.x = 0,
+							.y = 0
+						},
+						.extent
+						{
+							.width = drawExtent.width,
+							.height = drawExtent.height
+						}
+					};
+					vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pbrMaterial.normalsPipeline.layout, 1, 1, &object.material->materialSet, 0, nullptr); // this part only works cause all materials have same layout
+				}
+			}
+			else if (object.material->pipeline != lastPipeline)
 			{
 				lastPipeline = object.material->pipeline;
 				vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline->pipeline);

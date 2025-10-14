@@ -88,6 +88,7 @@ struct PBRMaterial
 {
 	MaterialPipeline opaquePipeline;
 	MaterialPipeline transparentPipeline;
+	MaterialPipeline normalsPipeline; // should be material-independent maybe
 
 	VkDescriptorSetLayout materialLayout;
 
@@ -144,6 +145,7 @@ public:
 	} cameraMode = Default;
 
 	bool debugDrawFrustum = false;
+	bool debugDrawNormals = false;
 
 	bool vSyncEnabled = false;
 

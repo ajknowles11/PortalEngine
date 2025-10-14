@@ -212,6 +212,7 @@
     <None Include="shaders\input_structures.glsl" />
     <None Include="shaders\lit.frag" />
     <None Include="shaders\mesh.vert" />
+    <None Include="shaders\normals.frag" />
     <None Include="shaders\sky.comp" />
     <None Include="shaders\tex_image.frag" />
   </ItemGroup>

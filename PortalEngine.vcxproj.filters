@@ -185,6 +185,9 @@
     <None Include="shaders\default.vert">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="shaders\normals.frag">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="lib\imgui\imgui.natvis" />
