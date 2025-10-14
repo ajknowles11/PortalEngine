@@ -481,12 +481,10 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 					});
 			}
 
-			size_t vertexCount = 0;
 			// load vertex positions
+			fastgltf::Accessor& posAccessor = gltf.accessors[p.findAttribute("POSITION")->second];
 			{
-				fastgltf::Accessor& posAccessor = gltf.accessors[p.findAttribute("POSITION")->second];
 				vertices.resize(vertices.size() + posAccessor.count);
-				vertexCount = posAccessor.count;
 
 				fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
 					[&](glm::vec3 const v, size_t const index) 
@@ -549,42 +547,41 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 			else
 			{
 				// calculate tangents ourselves
-				
-				for (size_t index = 0; index < vertexCount; index += 3)
-				{
-					if (index + 2 >= vertexCount)
+				// perhaps should just use mikktspace instead
+				fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
+					[&](glm::vec3 const v, size_t const index)
 					{
-						continue;
-					}
+						if (index % 3 == 0 && index + 2 < posAccessor.count)
+						{
+							Vertex& v0 = vertices[initialVtx + index];
+							Vertex& v1 = vertices[initialVtx + index + 1];
+							Vertex& v2 = vertices[initialVtx + index + 2];
 
-					Vertex& v0 = vertices[initialVtx + index];
-					Vertex& v1 = vertices[initialVtx + index + 1];
-					Vertex& v2 = vertices[initialVtx + index + 2];
+							glm::vec3 const e1 = v1.position - v0.position;
+							glm::vec3 const e2 = v2.position - v0.position;
+							glm::vec2 const dUV1 = { v1.uv_x - v0.uv_x, v1.uv_y - v0.uv_y };
+							glm::vec2 const dUV2 = { v2.uv_x - v0.uv_x, v2.uv_y - v0.uv_y };
 
-					glm::vec3 const e1 = v1.position - v0.position;
-					glm::vec3 const e2 = v2.position - v0.position;
-					glm::vec2 const dUV1 = { v1.uv_x - v0.uv_x, v1.uv_y - v0.uv_y };
-					glm::vec2 const dUV2 = { v2.uv_x - v0.uv_x, v2.uv_y - v0.uv_y };
-
-					float const det = (dUV1.x * dUV2.y - dUV2.x * dUV1.y);
-					if (det == 0)
-					{
-						std::cerr << "Error: degenerate UV coords for mesh: " + mesh.name + ", vertex index " << (initialVtx + index) << "! Normal calculation will be invalid.\n";
-						v0.surfaceTangent = { 1.0f, 0, 0, 0 };
-						v1.surfaceTangent = { 1.0f, 0, 0, 0 };
-						v2.surfaceTangent = { 1.0f, 0, 0, 0 };
-					}
-					else
-					{
-						float const invDet = 1.0f / det;
-						glm::vec3 const tangent = invDet * (dUV2.y * e1 - dUV1.y * e2);
-						// This tangent is not actually orthogonal to normal vector, since vertices have their own normals not necessarily equal to surface normal.
-						// We will perform Gram-Schmidt in vertex shader to fix this.
-						v0.surfaceTangent = glm::vec4(tangent, 0);
-						v1.surfaceTangent = glm::vec4(tangent, 0);
-						v2.surfaceTangent = glm::vec4(tangent, 0);
-					}
-				}
+							float const det = (dUV1.x * dUV2.y - dUV2.x * dUV1.y);
+							if (det == 0)
+							{
+								// Degenerate triangle
+								v0.surfaceTangent = { 1.0f, 0, 0, 0 };
+								v1.surfaceTangent = { 1.0f, 0, 0, 0 };
+								v2.surfaceTangent = { 1.0f, 0, 0, 0 };
+							}
+							else
+							{
+								float const invDet = 1.0f / det;
+								glm::vec3 const tangent = invDet * (dUV2.y * e1 - dUV1.y * e2);
+								// This tangent is not actually orthogonal to normal vector, since vertices have their own normals not necessarily equal to surface normal.
+								// We will perform Gram-Schmidt in vertex shader to fix this.
+								v0.surfaceTangent = glm::vec4(tangent, 0);
+								v1.surfaceTangent = glm::vec4(tangent, 0);
+								v2.surfaceTangent = glm::vec4(tangent, 0);
+							}
+						}
+					});
 			}
 
 			if (p.materialIndex.has_value())

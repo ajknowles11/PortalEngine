@@ -620,16 +620,43 @@ void VulkanEngine::run()
 				sceneData.ambientColor = glm::vec4(newAmbient[0], newAmbient[1], newAmbient[2], 1.0f);
 			}
 
-			float newSunColor[] = { sceneData.sunlightColor.r, sceneData.sunlightColor.g, sceneData.sunlightColor.b };
-			if (ImGui::ColorPicker3("Sun Color", newSunColor))
+			if (!scene.directionalLights.empty())
 			{
-				sceneData.sunlightColor = glm::vec4(newSunColor[0], newSunColor[1], newSunColor[2], 1.0f);
+				float newSunColor[] = { scene.directionalLights[0].color.r, scene.directionalLights[0].color.g, scene.directionalLights[0].color.b};
+				if (ImGui::ColorPicker3("Sun Color", newSunColor))
+				{
+					scene.directionalLights[0].color = glm::vec3(newSunColor[0], newSunColor[1], newSunColor[2]);
+				}
+
+				float newSunDir[] = { scene.directionalLights[0].direction.x, scene.directionalLights[0].direction.y, scene.directionalLights[0].direction.z, scene.directionalLights[0].intensity };
+				if (ImGui::InputFloat4("Sun Direction", newSunDir))
+				{
+					scene.directionalLights[0].direction = glm::vec3(newSunDir[0], newSunDir[1], newSunDir[2]);
+					scene.directionalLights[0].intensity = newSunDir[3];
+				}
 			}
 
-			float newSunDir[] = { sceneData.sunlightDirection.x, sceneData.sunlightDirection.y, sceneData.sunlightDirection.z, sceneData.sunlightDirection.w };
-			if (ImGui::InputFloat4("Sun Direction", newSunDir))
+			if (!scene.pointLights.empty())
 			{
-				sceneData.sunlightDirection = glm::vec4(newSunDir[0], newSunDir[1], newSunDir[2], newSunDir[3]);
+				float newPlColor[] = { scene.pointLights[0].color.r, scene.pointLights[0].color.g, scene.pointLights[0].color.b };
+				if (ImGui::ColorPicker3("Point Light Color", newPlColor))
+				{
+					scene.pointLights[0].color = glm::vec3(newPlColor[0], newPlColor[1], newPlColor[2]);
+				}
+
+				float newPlPos[] = { scene.pointLights[0].position.x, scene.pointLights[0].position.y, scene.pointLights[0].position.z };
+				if (ImGui::InputFloat3("Point Light Position", newPlPos))
+				{
+					scene.pointLights[0].position = glm::vec3(newPlPos[0], newPlPos[1], newPlPos[2]);
+				}
+
+				float newPlParam[] = { scene.pointLights[0].constant, scene.pointLights[0].linear, scene.pointLights[0].quadratic };
+				if (ImGui::InputFloat3("Constant/Linear/Quadratic", newPlParam))
+				{
+					scene.pointLights[0].constant = newPlParam[0];
+					scene.pointLights[0].linear = newPlParam[1];
+					scene.pointLights[0].quadratic = newPlParam[2];
+				}
 			}
 		}
 		ImGui::End();
@@ -674,9 +701,21 @@ void VulkanEngine::initScene(std::shared_ptr<LoadedGLTF> const newScene)
 	sceneData.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent.width) / static_cast<float>(drawExtent.height), 10000.0f, 0.01f);
 	sceneData.proj[1][1] *= -1;
 
+	DirectionalLight sun;
+	sun.direction = glm::vec3(0, -1.0f, -0.5f);
+	sun.intensity = 1.0f;
+	sun.color = glm::vec3(1.0f);
+	scene.directionalLights.push_back(sun);
+
+	PointLight pl;
+	pl.position = glm::vec3(1, 0, 0);
+	pl.color = glm::vec3(0, 0, 1);
+	pl.constant = 1.0f;
+	pl.linear = 0.07f;
+	pl.quadratic = 0.017f;
+	scene.pointLights.push_back(pl);
+
 	sceneData.ambientColor = glm::vec4(0.1f);
-	sceneData.sunlightColor = glm::vec4(1.0f);
-	sceneData.sunlightDirection = glm::vec4(0, -1.0, -0.5f, 1.0f);
 }
 
 void VulkanEngine::cleanupScene() 
@@ -881,6 +920,9 @@ void VulkanEngine::initDescriptors()
 	{
 		DescriptorLayoutBuilder builder;
 		builder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		builder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+		builder.addBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+		builder.addBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 		gpuSceneDataDescriptorLayout = builder.build(device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 	}
 	{
@@ -1374,14 +1416,44 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 		{
 			destroyBuffer(gpuSceneDataBuffer);
 		});
-
 	GPUSceneData* sceneUniformData = static_cast<GPUSceneData*>(gpuSceneDataBuffer.allocation->GetMappedData());
 	*sceneUniformData = sceneData;
+
+	AllocatedBuffer const directionalLightBuffer = createBuffer(sizeof(DirectionalLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	getCurrentFrame().deletionQueue.pushFunction([=, this]()
+		{
+			destroyBuffer(directionalLightBuffer);
+		});
+	if (!scene.directionalLights.empty())
+	{
+		DirectionalLight* directionalLightData = static_cast<DirectionalLight*>(directionalLightBuffer.allocation->GetMappedData());
+		memcpy(directionalLightData, scene.directionalLights.data(), scene.directionalLights.size() * sizeof(DirectionalLight));
+	}
+
+	AllocatedBuffer const pointLightBuffer = createBuffer(sizeof(PointLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	getCurrentFrame().deletionQueue.pushFunction([=, this]()
+		{
+			destroyBuffer(pointLightBuffer);
+		});
+	if (!scene.pointLights.empty())
+	{
+		PointLight* pointLightData = static_cast<PointLight*>(pointLightBuffer.allocation->GetMappedData());
+		memcpy(pointLightData, scene.pointLights.data(), scene.pointLights.size() * sizeof(PointLight));
+	}
+
+	AllocatedBuffer const spotLightBuffer = createBuffer(sizeof(SpotLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	getCurrentFrame().deletionQueue.pushFunction([=, this]()
+		{
+			destroyBuffer(spotLightBuffer);
+		});
 
 	VkDescriptorSet globalDescriptor = getCurrentFrame().frameDescriptors.allocate(device, gpuSceneDataDescriptorLayout);
 
 	DescriptorWriter writer;
 	writer.writeBuffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+	writer.writeBuffer(1, directionalLightBuffer.buffer, sizeof(DirectionalLight), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+	writer.writeBuffer(2, pointLightBuffer.buffer, sizeof(PointLight), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+	writer.writeBuffer(3, spotLightBuffer.buffer, sizeof(SpotLight), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 	writer.updateSet(device, globalDescriptor);
 
 	MaterialPipeline* lastPipeline = nullptr;

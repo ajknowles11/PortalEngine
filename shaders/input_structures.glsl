@@ -6,9 +6,56 @@ layout(set = 0, binding = 0) uniform SceneData
 	mat4 viewProj;
 	mat4 cullViewProj;
 	vec4 ambientColor;
-	vec4 sunlightDirection; //w for sun power
-	vec4 sunlightColor;
 } sceneData;
+
+struct DirectionalLight
+{
+	vec3 direction;
+	float intensity;
+	vec3 color;
+	float pad0;
+};
+
+layout (set = 0, binding = 1) readonly buffer DirectionalLights
+{
+	//uint count;
+	DirectionalLight lights[];
+} directionalLights;
+
+struct PointLight
+{
+	vec3 position;
+	float pad0;
+	vec3 color;
+	
+	float constant;
+	float linear;
+	float quadratic;
+
+	float pad1, pad2;
+};
+
+layout (set = 0, binding = 2) readonly buffer PointLights
+{
+	//uint count;
+	PointLight lights[];
+} pointLights;
+
+struct SpotLight
+{
+	vec3 position;
+	float innerCutOff;
+	vec3 direction;
+	float outerCutOff;
+	vec3 color;
+	float intensity;
+};
+
+layout (set = 0, binding = 3) readonly buffer SpotLights
+{
+	//uint count;
+	SpotLight lights[];
+} spotLights;
 
 layout(set = 1, binding = 0) uniform PBRMaterialData
 {  
