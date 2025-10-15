@@ -45,7 +45,7 @@ float DistributionGGX(vec3 N, vec3 H, float roughness)
 	float denom = (NdotH * (a2 - 1.0) + 1.0);
 	denom = PI * denom * denom;
 
-	return num / max(denom, 0.000000001);
+	return num / denom;
 }
 
 float GeometrySchlickGGX(float NdotV, float roughness)
@@ -56,7 +56,7 @@ float GeometrySchlickGGX(float NdotV, float roughness)
 	float num = NdotV;
 	float denom = NdotV * (1.0 - k) + k;
 
-	return num / max(denom, 0.000000001);
+	return num / denom;
 }
 
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
@@ -105,16 +105,16 @@ void main()
 	vec3 albedo = texel.xyz / texel.w; // un-premultiply alpha
 	albedo *= materialData.colorFactors.xyz;
 	vec3 normal = GetNormalFromNormalMap();
-	float metallic = mrao.g * materialData.metalRoughFactors.x; //metal rough using gltf spec rn (g and b channels), convert to r and g later
-	float roughness = mrao.b * materialData.metalRoughFactors.y;
-	float ao = mrao.a;
+	float metallic = mrao.b * materialData.metalRoughFactors.x;
+	float roughness = mrao.g * materialData.metalRoughFactors.y;
+	float ao = mrao.r;
 
 	vec3 viewPos = vec3(sceneData.invView[3]);
 	vec3 viewDir = normalize(viewPos - inFragPos);
 
 	// integrate all light sources
 	vec3 Lo = vec3(0);
-	for (int i = 0; i < directionalLights.lights.length(); i++) 
+	for (int i = 0; i < directionalLights.count; i++) 
 	{
 		DirectionalLight light = directionalLights.lights[i];
 
@@ -124,7 +124,7 @@ void main()
 
 		Lo += AddLight(normal, viewDir, L, radiance, albedo, metallic, roughness);
 	}
-	for (int i = 0; i < pointLights.lights.length(); i++)
+	for (int i = 0; i < pointLights.count; i++)
 	{
 		PointLight light = pointLights.lights[i];
 
@@ -136,9 +136,8 @@ void main()
 
 		Lo += AddLight(normal, viewDir, L, radiance, albedo, metallic, roughness);
 	}
-	for (int i = 0; i < spotLights.lights.length(); i++)
+	for (int i = 0; i < spotLights.count; i++)
 	{
-	continue;
 		SpotLight light = spotLights.lights[i];
 
 		vec3 L = normalize(light.position - inFragPos);

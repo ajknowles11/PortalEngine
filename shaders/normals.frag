@@ -24,7 +24,7 @@ vec3 GetNormalFromNormalMap()
 {
 	vec3 normal = texture(normalMap, inUV).rgb;
 	normal = normal * 2.0 - 1.0;
-	return normalize(inTangentMat * normal);
+	return (normalize(inTangentMat * normal) + 1.0) / 2.0;
 }
 
 void main() 
@@ -35,9 +35,6 @@ void main()
 	if (scaledAlpha < 0.5) discard;
 
 	vec3 normal = GetNormalFromNormalMap();
-
-	vec3 viewPos = vec3(sceneData.invView[3]);
-	vec3 viewDir = normalize(viewPos - inFragPos);
 
 	outFragColor = vec4(normal, 1.0);
 }

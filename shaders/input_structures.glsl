@@ -18,7 +18,7 @@ struct DirectionalLight
 
 layout (set = 0, binding = 1) readonly buffer DirectionalLights
 {
-	//uint count;
+	uint count;
 	DirectionalLight lights[];
 } directionalLights;
 
@@ -37,7 +37,7 @@ struct PointLight
 
 layout (set = 0, binding = 2) readonly buffer PointLights
 {
-	//uint count;
+	uint count;
 	PointLight lights[];
 } pointLights;
 
@@ -53,7 +53,7 @@ struct SpotLight
 
 layout (set = 0, binding = 3) readonly buffer SpotLights
 {
-	//uint count;
+	uint count;
 	SpotLight lights[];
 } spotLights;
 
