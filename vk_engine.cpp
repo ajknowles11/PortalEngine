@@ -317,6 +317,23 @@ void VulkanEngine::loadScene(std::string_view const filePath)
 	initScene(*newScene);
 }
 
+void VulkanEngine::queueLoadHDRI(std::string const filePath)
+{
+	getCurrentFrame().postFrameQueue.pushFunction([this, filePath]()
+		{
+			// TODO make loading async and wait for just end of frame to init
+			vkQueueWaitIdle(graphicsQueue);
+			loadHDRI(filePath);
+		});
+}
+
+void VulkanEngine::loadHDRI(std::string_view const filePath)
+{
+	std::optional<AllocatedImage> newSkyboxImage = load_cubemap_from_hdri(this, filePath);
+	assert(newSkyboxImage.has_value());
+	destroyImage(*newSkyboxImage);
+}
+
 void VulkanEngine::draw()
 {
 	VK_CHECK(vkWaitForFences(device, 1, &getCurrentFrame().renderFence, true, 1000000000));
@@ -493,6 +510,25 @@ static void SDLCALL openSceneFile(void* userData, char const* const* fileList, i
 	}
 }
 
+static void SDLCALL openHDRIFile(void* userData, char const* const* fileList, int filter)
+{
+	if (!fileList)
+	{
+		SDL_Log("Error opening HDRI file: %s", SDL_GetError());
+		return;
+	}
+	else if (!*fileList)
+	{
+		SDL_Log("No HDRI file selected.");
+		return;
+	}
+
+	if (VulkanEngine* engine = static_cast<VulkanEngine*>(userData))
+	{
+		engine->queueLoadHDRI(*fileList);
+	}
+}
+
 void VulkanEngine::run()
 {
 	SDL_Event e;
@@ -628,6 +664,14 @@ void VulkanEngine::run()
 					{ "GLTF files",  "gltf;glb" }
 				};
 				SDL_ShowOpenFileDialog(openSceneFile, this, nullptr, dialogFileFilters, 1, baseAppPath.c_str(), false);
+			}
+
+			if (ImGui::Button("Open HDRI"))
+			{
+				static const SDL_DialogFileFilter dialogFileFilters[] = {
+					{ "HDRI files", "hdr"}
+				};
+				SDL_ShowOpenFileDialog(openHDRIFile, this, nullptr, dialogFileFilters, 1, baseAppPath.c_str(), false);
 			}
 
 			float newAmbient[] = { sceneData.ambientColor.r, sceneData.ambientColor.g, sceneData.ambientColor.b };
@@ -1797,6 +1841,13 @@ AllocatedImage VulkanEngine::createImage(VkExtent3D const size, VkFormat const f
 	{
 		imgInfo.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(size.width, size.height)))) + 1;
 	}
+	if (size.depth == 6)
+	{
+		imgInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+		imgInfo.extent.depth = 1;
+		imgInfo.imageType = VK_IMAGE_TYPE_2D;
+		imgInfo.arrayLayers = 6;
+	}
 
 	VmaAllocationCreateInfo constexpr allocInfo
 	{
@@ -1814,6 +1865,11 @@ AllocatedImage VulkanEngine::createImage(VkExtent3D const size, VkFormat const f
 
 	VkImageViewCreateInfo viewInfo = vkInit::image_view_create_info(format, newImage.image, aspectFlag);
 	viewInfo.subresourceRange.levelCount = imgInfo.mipLevels;
+	if (size.depth == 6)
+	{
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+		viewInfo.subresourceRange.layerCount = 6;
+	}
 
 	VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &newImage.imageView));
 
@@ -1822,7 +1878,8 @@ AllocatedImage VulkanEngine::createImage(VkExtent3D const size, VkFormat const f
 
 AllocatedImage VulkanEngine::createImage(void const* data, VkExtent3D const size, VkFormat const format, VkImageUsageFlags const usage, bool const mipmapped) const
 {
-	size_t const dataSize = static_cast<size_t>(size.depth) * static_cast<size_t>(size.width) * static_cast<size_t>(size.height) * 4;
+	size_t const channelSize = format == VK_FORMAT_R16G16B16A16_SFLOAT ? 8 : 4; // temp fix for higher p image (cubemap)
+	size_t const dataSize = static_cast<size_t>(size.depth) * static_cast<size_t>(size.width) * static_cast<size_t>(size.height) * channelSize;
 	AllocatedBuffer const uploadBuffer = createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
 	memcpy(uploadBuffer.info.pMappedData, data, dataSize);

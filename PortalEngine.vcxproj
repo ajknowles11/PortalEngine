@@ -208,9 +208,12 @@
     <None Include="shaders\build\CompileShaders.js" />
     <None Include="shaders\default.frag" />
     <None Include="shaders\default.vert" />
+    <None Include="shaders\environment.frag" />
+    <None Include="shaders\environment.vert" />
     <None Include="shaders\gradient.comp" />
     <None Include="shaders\input_structures.glsl" />
     <None Include="shaders\lit.frag" />
+    <None Include="shaders\make_cubemap.comp" />
     <None Include="shaders\mesh.vert" />
     <None Include="shaders\normals.frag" />
     <None Include="shaders\sky.comp" />

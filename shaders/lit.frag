@@ -97,16 +97,16 @@ void main()
 {
 	// Mip-corrected alpha clip
 	vec4 texel = texture(albedoMap, inUV);
-	float scaledAlpha = texel.w * (1 + max(0.0, CalcMipLevel(inUV * textureSize(albedoMap, 0))) * 0.25);
+	float scaledAlpha = texel.a * (1 + max(0.0, CalcMipLevel(inUV * textureSize(albedoMap, 0))) * 0.25);
 	if (scaledAlpha < 0.5) discard;
 
 	vec4 mrao = texture(metalRoughAOMap, inUV);
 
-	vec3 albedo = texel.xyz / texel.w; // un-premultiply alpha
-	albedo *= materialData.colorFactors.xyz;
+	vec3 albedo = texel.rgb / texel.a; // un-premultiply alpha
+	albedo *= materialData.colorFactors.rgb;
 	vec3 normal = GetNormalFromNormalMap();
-	float metallic = mrao.b * materialData.metalRoughFactors.x;
-	float roughness = mrao.g * materialData.metalRoughFactors.y;
+	float metallic = mrao.b * materialData.metalRoughFactors.r;
+	float roughness = mrao.g * materialData.metalRoughFactors.g;
 	float ao = mrao.r;
 
 	vec3 viewPos = vec3(sceneData.invView[3]);

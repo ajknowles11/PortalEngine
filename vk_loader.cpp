@@ -6,7 +6,9 @@
 
 #include "vk_engine.h"
 #include "vk_initializers.h"
+#include "vk_images.h"
 #include "vk_types.h"
+#include "vk_pipelines.h"
 #include <glm/gtx/quaternion.hpp>
 
 #include "fastgltf/glm_element_traits.hpp"
@@ -725,7 +727,151 @@ void LoadedGLTF::clearAll()
 	}
 }
 
+std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::string_view filePath)
+{
+	static int const cubeMapSize = 512;
+
+	int width, height, nrChannels;
+	float* data = stbi_loadf(filePath.data(), &width, &height, &nrChannels, 4);
+	if (data)
+	{
+		VkPhysicalDeviceProperties deviceProperties{};
+		vkGetPhysicalDeviceProperties(engine->selectedGPU, &deviceProperties);
+
+		AllocatedImage hdrImage{};
+		{
+			VkExtent3D const imageSize
+			{
+				.width = static_cast<uint32_t>(width),
+				.height = static_cast<uint32_t>(height),
+				.depth = 1
+			};
+
+			hdrImage = engine->createImage(data, imageSize, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT, false);
+		}
+		
+		AllocatedImage cubemapImage{};
+		{
+			VkExtent3D cubemapExtent
+			{
+				.width = 512,
+				.height = 512,
+				.depth = 6
+			};
+			cubemapImage = engine->createImage(cubemapExtent, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT);
+		}
+		
+		VkSampler hdriSampler;
+		{
+			VkSamplerCreateInfo samplerInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+				.pNext = nullptr,
+				.magFilter = VK_FILTER_LINEAR,
+				.minFilter = VK_FILTER_LINEAR,
+				.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+				.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+				.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+				.anisotropyEnable = VK_TRUE,
+				.maxAnisotropy = deviceProperties.limits.maxSamplerAnisotropy,
+				.minLod = 0,
+				.maxLod = VK_LOD_CLAMP_NONE,
+			};
+			vkCreateSampler(engine->device, &samplerInfo, nullptr, &hdriSampler);
+		}
+
+		VkDescriptorSet computeDescriptor;
+		VkDescriptorSetLayout computeLayout;
+		DescriptorAllocatorGrowable alloc;
+		{
+			std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = { {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}, {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1} };
+			alloc.init(engine->device, 1, sizes);
+
+			DescriptorLayoutBuilder builder;
+			builder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			builder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+			computeLayout = builder.build(engine->device, VK_SHADER_STAGE_COMPUTE_BIT);
+			computeDescriptor = alloc.allocate(engine->device, computeLayout, nullptr);
+		}
+
+		VkPipeline computePipeline;
+		VkPipelineLayout computePipelineLayout;
+		{
+			VkPipelineLayoutCreateInfo const computeLayoutInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+				.pNext = nullptr,
+				.setLayoutCount = 1,
+				.pSetLayouts = &computeLayout
+			};
+			VK_CHECK(vkCreatePipelineLayout(engine->device, &computeLayoutInfo, nullptr, &computePipelineLayout));
+
+			VkShaderModule cubemapShader;
+			if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/make_cubemap.comp.spv").c_str(), engine->device, &cubemapShader))
+			{
+				std::cerr << "Error when building cubemap compute shader module";
+			}
+
+			VkPipelineShaderStageCreateInfo stageInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.pNext = nullptr,
+				.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+				.module = cubemapShader,
+				.pName = "main"
+			};
+
+			VkComputePipelineCreateInfo computePipelineCreateInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+				.pNext = nullptr,
+				.stage = stageInfo,
+				.layout = computePipelineLayout
+			};
+
+			VK_CHECK(vkCreateComputePipelines(engine->device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &computePipeline));
+		
+			vkDestroyShaderModule(engine->device, cubemapShader, nullptr);
+		}
+
+		// render to cubemap here
+		{
+			DescriptorWriter writer;
+			writer.writeImage(0, hdrImage.imageView, hdriSampler, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			writer.writeImage(1, cubemapImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+			writer.updateSet(engine->device, computeDescriptor);
+
+			engine->immediateSubmit([&](VkCommandBuffer cmd)
+				{
+					vkUtil::transition_image(cmd, cubemapImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+					vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
+
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptor, 0, nullptr);
+
+					vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(static_cast<float>(cubeMapSize) / 16.0f)), static_cast<uint32_t>(std::ceil(static_cast<float>(cubeMapSize) / 16.0f)), 6);
+				});
+		}
+
+		alloc.destroyPools(engine->device);
+		vkDestroyDescriptorSetLayout(engine->device, computeLayout, nullptr);
+		vkDestroyPipelineLayout(engine->device, computePipelineLayout, nullptr);
+		vkDestroyPipeline(engine->device, computePipeline, nullptr);
+		vkDestroySampler(engine->device, hdriSampler, nullptr);
+		engine->destroyImage(hdrImage);
+
+		stbi_image_free(data);
+
+		return cubemapImage;
+	}
+	else
+	{
+		std::cerr << "Failed to load HDRI image at " << filePath << "\n";
+		return std::nullopt;
+	}
+}
+
 std::optional<std::shared_ptr<LoadedGLTF>> load_pscn(VulkanEngine* engine, std::string_view filePath) 
 {
-	return nullptr;
+	return std::nullopt;
 }

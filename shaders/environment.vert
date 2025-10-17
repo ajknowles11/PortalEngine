@@ -2,6 +2,8 @@
 
 #extension GL_EXT_buffer_reference : require
 
+layout (location = 0) out vec3 outLocalPos;
+
 layout(set = 0, binding = 0) uniform  SceneData
 {   
 	mat4 view;
@@ -19,14 +21,15 @@ layout(buffer_reference, std430) readonly buffer VertexBuffer
 
 layout( push_constant ) uniform PushConstants
 {
-	mat4 modelMat;
-	mat4 normalMat;
 	VertexBuffer vertexBuffer;
 } constants;
 
 void main() 
 {
-	vec4 position = constants.vertexBuffer.vertices[gl_VertexIndex];
+	outLocalPos = constants.vertexBuffer.vertices[gl_VertexIndex].xyz;
 
-	gl_Position =  sceneData.viewProj * constants.modelMat * position;
+	mat4 rotView = mat4(mat3(sceneData.view));
+	vec4 position = sceneData.proj * rotView * vec4(outLocalPos, 1.0);
+
+	gl_Position =  position.xyww;
 }

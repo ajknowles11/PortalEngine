@@ -240,6 +240,8 @@ public:
 	void cleanup();
 	void queueLoadScene(std::string filePath);
 	void loadScene(std::string_view filePath);
+	void queueLoadHDRI(std::string filePath);
+	void loadHDRI(std::string_view filePath);
 	void saveScene(std::shared_ptr<LoadedGLTF> scene) {}
 	void draw();
 	void drawBackground(VkCommandBuffer cmd) const;

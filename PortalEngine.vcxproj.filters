@@ -188,6 +188,15 @@
     <None Include="shaders\normals.frag">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="shaders\environment.frag">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shaders\environment.vert">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shaders\make_cubemap.comp">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="lib\imgui\imgui.natvis" />

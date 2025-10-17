@@ -57,6 +57,8 @@ layout (set = 0, binding = 3) readonly buffer SpotLights
 	SpotLight lights[];
 } spotLights;
 
+layout (set = 0, binding = 4) uniform samplerCube environmentMap;
+
 layout(set = 1, binding = 0) uniform PBRMaterialData
 {  
 	vec4 colorFactors;
