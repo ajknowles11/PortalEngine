@@ -7,29 +7,31 @@ layout(set = 0, binding = 0) uniform sampler2D inHDRI;
 layout(rgba16f, set = 0, binding = 1) uniform imageCube image;
 
 const vec2 invAtan = vec2(0.1591, 0.3183);
-vec2 CubemapToHDRI(ivec3 p, ivec2 size)
+vec2 CubemapToHDRI(ivec3 texCoord, ivec2 size)
 {
 	// first convert cubemap point coords to direction vector
 	vec3 v;
-	switch (p.z)
+	vec3 p = texCoord;
+	vec2 s = size;
+	switch (texCoord.z)
 	{
 		case 0: 
-			v = normalize(vec3(0.5, p.y / size.y - 0.5, 1 - p.x / size.x - 0.5));
+			v = normalize(vec3(p.x / s.x - 0.5, p.y / s.y - 0.5, 0.5));
 			break;
 		case 1:
-			v = normalize(vec3(0.5, p.y / size.y - 0.5, p.x / size.x - 0.5));
+			v = normalize(vec3(1 - p.x / s.x - 0.5, p.y / s.y - 0.5, -0.5));
 			break;
 		case 2:
-			v = normalize(vec3(p.x / size.x - 0.5, 0.5, 1 - p.y / size.y - 0.5));
+			v = normalize(vec3(1 - p.y / s.y - 0.5, -0.5, p.x / s.x - 0.5));
 			break;
 		case 3:
-			v = normalize(vec3(p.x / size.x - 0.5, -0.5, p.y / size.y - 0.5));
+			v = normalize(vec3(p.y / s.y - 0.5, 0.5, p.x / s.x - 0.5));
 			break;
 		case 4:
-			v = normalize(vec3(p.x / size.x - 0.5, p.y / size.y - 0.5, 0.5));
+			v = normalize(vec3(-0.5, p.y / s.y - 0.5, p.x / s.x - 0.5));
 			break;
 		case 5:
-			v = normalize(vec3(1 - p.x / size.x - 0.5, p.y / size.y - 0.5, 0.5));
+			v = normalize(vec3(0.5, p.y / s.y - 0.5, 1 - p.x / s.x - 0.5));
 			break;
 	}
 
