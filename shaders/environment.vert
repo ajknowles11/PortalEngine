@@ -31,5 +31,7 @@ void main()
 	mat4 rotView = mat4(mat3(sceneData.view));
 	vec4 position = sceneData.proj * rotView * vec4(outLocalPos, 1.0);
 
-	gl_Position =  position.xyww;
+	position.z = 0;
+
+	gl_Position =  position;
 }

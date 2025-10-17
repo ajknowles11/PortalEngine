@@ -732,7 +732,7 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 	static int const cubeMapSize = 512;
 
 	int width, height, nrChannels;
-	float* data = stbi_loadf(filePath.data(), &width, &height, &nrChannels, 4);
+	float* data = stbi_loadf(filePath.data(), &width, &height, &nrChannels, 0);
 	if (data)
 	{
 		VkPhysicalDeviceProperties deviceProperties{};
@@ -747,7 +747,19 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 				.depth = 1
 			};
 
-			hdrImage = engine->createImage(data, imageSize, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT, false);
+			char* newData = new char[2 * 4 * width * height]();
+			for (size_t p = 0; p < (size_t)width * (size_t)height; p++)
+			{
+				newData[8 * p + 0] = reinterpret_cast<char*>(data)[12 * p + 2];
+				newData[8 * p + 1] = reinterpret_cast<char*>(data)[12 * p + 3];
+				newData[8 * p + 2] = reinterpret_cast<char*>(data)[12 * p + 6];
+				newData[8 * p + 3] = reinterpret_cast<char*>(data)[12 * p + 7];
+				newData[8 * p + 4] = reinterpret_cast<char*>(data)[12 * p + 10];
+				newData[8 * p + 5] = reinterpret_cast<char*>(data)[12 * p + 11];
+			}
+
+			hdrImage = engine->createImage(newData, imageSize, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT, false);
+			delete[] newData;
 		}
 		
 		AllocatedImage cubemapImage{};
@@ -758,7 +770,7 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 				.height = 512,
 				.depth = 6
 			};
-			cubemapImage = engine->createImage(cubemapExtent, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT);
+			cubemapImage = engine->createImage(cubemapExtent, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 		}
 		
 		VkSampler hdriSampler;
@@ -850,6 +862,8 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptor, 0, nullptr);
 
 					vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(static_cast<float>(cubeMapSize) / 16.0f)), static_cast<uint32_t>(std::ceil(static_cast<float>(cubeMapSize) / 16.0f)), 6);
+
+					vkUtil::transition_image(cmd, cubemapImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 				});
 		}
 

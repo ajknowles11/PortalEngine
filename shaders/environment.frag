@@ -12,13 +12,15 @@ layout(set = 0, binding = 0) uniform  SceneData
 	vec4 ambientColor;
 } sceneData;
 
-layout (set = 0, binding = 1) uniform samplerCube environmentMap;
+layout (set = 1, binding = 0) uniform samplerCube environmentMap;
 
 layout (location = 0) out vec4 outFragColor;
 
 void main()
 {
 	vec3 envColor = texture(environmentMap, inLocalPos).rgb;
+
+	envColor = envColor / (envColor + vec3(1.0));
 
 	outFragColor = vec4(envColor, 1.0);
 }

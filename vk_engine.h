@@ -45,16 +45,21 @@ struct ComputeEffect
 	ComputePushConstants data;
 };
 
-struct RenderObject 
+struct MeshData
 {
 	uint32_t indexCount;
 	uint32_t firstIndex;
 	VkBuffer indexBuffer;
+	VkDeviceAddress vertexBufferAddress;
+};
+
+struct RenderObject 
+{
+	MeshData meshData;
 
 	MaterialInstance* material;
 	Bounds bounds;
 	glm::mat4 transform;
-	VkDeviceAddress vertexBufferAddress;
 };
 
 struct FrameData
@@ -227,7 +232,8 @@ public:
 
 	MaterialPipeline defaultPipeline;
 	VkDescriptorSetLayout defaultDescriptorLayout;
-	RenderObject cube;
+	MeshData lineCube;
+	MeshData cube;
 
 	DrawContext mainDrawContext;
 

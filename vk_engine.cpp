@@ -78,13 +78,16 @@ void MeshNode::draw(glm::mat4 const& topMatrix, DrawContext& ctx)
 	{
 		RenderObject def
 		{
-			.indexCount = s.count,
-			.firstIndex = s.startIndex,
-			.indexBuffer = mesh->meshBuffers.indexBuffer.buffer,
+			.meshData 
+			{
+				.indexCount = s.count,
+				.firstIndex = s.startIndex,
+				.indexBuffer = mesh->meshBuffers.indexBuffer.buffer,
+				.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress
+			},
 			.material = &s.material->data,
 			.bounds = s.bounds,
 			.transform = nodeMatrix,
-			.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress
 		};
 
 		if (s.material->data.passType == MaterialPass::Transparent)
@@ -331,7 +334,13 @@ void VulkanEngine::loadHDRI(std::string_view const filePath)
 {
 	std::optional<AllocatedImage> newSkyboxImage = load_cubemap_from_hdri(this, filePath);
 	assert(newSkyboxImage.has_value());
-	destroyImage(*newSkyboxImage);
+
+	if (scene.environmentImage.has_value())
+	{
+		destroyImage(*scene.environmentImage);
+		scene.environmentImage = std::nullopt;
+	}
+	scene.environmentImage = *newSkyboxImage;
 }
 
 void VulkanEngine::draw()
@@ -428,7 +437,7 @@ void VulkanEngine::updateScene(float const delta)
 			{
 				if (a.material == b.material)
 				{
-					return a.indexBuffer < b.indexBuffer;
+					return a.meshData.indexBuffer < b.meshData.indexBuffer;
 				}
 				else
 				{
@@ -451,18 +460,18 @@ void VulkanEngine::updateScene(float const delta)
 			size_t cmdIdx = 0;
 			for (auto const& r : mainDrawContext.OpaqueSurfaces)
 			{
-				drawIndirectCommands[cmdIdx].indexCount = r.indexCount;
+				drawIndirectCommands[cmdIdx].indexCount = r.meshData.indexCount;
 				drawIndirectCommands[cmdIdx].instanceCount = 1;
-				drawIndirectCommands[cmdIdx].firstIndex = r.firstIndex;
+				drawIndirectCommands[cmdIdx].firstIndex = r.meshData.firstIndex;
 				drawIndirectCommands[cmdIdx].vertexOffset = 0;
 				drawIndirectCommands[cmdIdx].firstInstance = 0;
 				++cmdIdx;
 			}
 			for (auto const& r : mainDrawContext.TransparentSurfaces)
 			{
-				drawIndirectCommands[cmdIdx].indexCount = r.indexCount;
+				drawIndirectCommands[cmdIdx].indexCount = r.meshData.indexCount;
 				drawIndirectCommands[cmdIdx].instanceCount = 1;
-				drawIndirectCommands[cmdIdx].firstIndex = r.firstIndex;
+				drawIndirectCommands[cmdIdx].firstIndex = r.meshData.firstIndex;
 				drawIndirectCommands[cmdIdx].vertexOffset = 0;
 				drawIndirectCommands[cmdIdx].firstInstance = 0;
 				++cmdIdx;
@@ -813,6 +822,11 @@ void VulkanEngine::initScene(std::shared_ptr<LoadedGLTF> const newScene)
 void VulkanEngine::cleanupScene() 
 {
 	sceneDeletionQueue.flush();
+	if (scene.environmentImage.has_value())
+	{
+		destroyImage(*scene.environmentImage);
+		scene.environmentImage = std::nullopt;
+	}
 	scene.staticGeometry = nullptr;
 	indirectDrawInitialized = false;
 }
@@ -1298,65 +1312,120 @@ void VulkanEngine::initDefaultData()
 	defaultMaterial->data = defaultData;
 
 	// Make debug shapes
-	glm::vec4 vertices[] = { {-0.5f, -0.5f, -0.5f, 1.0f}, {-0.5f, -0.5f, 0.5f, 1.0f}, {-0.5f, 0.5f, -0.5f, 1.0f}, {-0.5f, 0.5f, 0.5f, 1.0f}, {0.5f, -0.5f, -0.5f, 1.0f}, {0.5f, -0.5f, 0.5f, 1.0f}, {0.5f, 0.5f, -0.5f, 1.0f}, {0.5f, 0.5f, 0.5f, 1.0f} };
-	uint32_t indices[] = {0, 1, 0, 2, 1, 3, 2, 3, 0, 4, 2, 6, 1, 5, 3, 7, 4, 5, 4, 6, 5, 7, 6, 7};
-
-	size_t vertexBufferSize = 8 * sizeof(glm::vec4);
-	size_t indexBufferSize = 24 * sizeof(uint32_t);
-
-	AllocatedBuffer vertexBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-		VMA_MEMORY_USAGE_GPU_ONLY);
-
-	VkBufferDeviceAddressInfo const deviceAddressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = vertexBuffer.buffer };
-	VkDeviceAddress vertexBufferAddress = vkGetBufferDeviceAddress(device, &deviceAddressInfo);
-
-	AllocatedBuffer indexBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-
-	AllocatedBuffer const staging = createBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-
-	void* data = staging.allocation->GetMappedData();
-
-	memcpy(data, vertices, vertexBufferSize);
-	memcpy(static_cast<char*>(data) + vertexBufferSize, indices, indexBufferSize);
-
-	immediateSubmit([&](VkCommandBuffer const cmd)
-		{
-			VkBufferCopy const vertexCopy
-			{
-				.srcOffset = 0,
-				.dstOffset = 0,
-				.size = vertexBufferSize
-			};
-			vkCmdCopyBuffer(cmd, staging.buffer, vertexBuffer.buffer, 1, &vertexCopy);
-
-			VkBufferCopy const indexCopy
-			{
-				.srcOffset = vertexBufferSize,
-				.dstOffset = 0,
-				.size = indexBufferSize
-			};
-			vkCmdCopyBuffer(cmd, staging.buffer, indexBuffer.buffer, 1, &indexCopy);
-		});
-
-	destroyBuffer(staging);
-
-	cube.indexBuffer = indexBuffer.buffer;
-	cube.vertexBufferAddress = vertexBufferAddress;
-
-	cube.indexCount = 24;
-	cube.firstIndex = 0;
-	cube.bounds = {
-		.origin = glm::vec3(),
-		.sphereRadius = sqrt(3.0f) * 0.5f,
-		.extents = glm::vec3(0.5f, 0.5f, 0.5f)
-	};
-	cube.transform = glm::mat4(1.0f);
-
-	mainDeletionQueue.pushFunction([=, this]()
+	// line cube
 	{
-			destroyBuffer(indexBuffer);
-			destroyBuffer(vertexBuffer);
-	});
+		glm::vec4 vertices[] = { {-0.5f, -0.5f, -0.5f, 1.0f}, {-0.5f, -0.5f, 0.5f, 1.0f}, {-0.5f, 0.5f, -0.5f, 1.0f}, {-0.5f, 0.5f, 0.5f, 1.0f}, {0.5f, -0.5f, -0.5f, 1.0f}, {0.5f, -0.5f, 0.5f, 1.0f}, {0.5f, 0.5f, -0.5f, 1.0f}, {0.5f, 0.5f, 0.5f, 1.0f} };
+		uint32_t indices[] = { 0, 1, 0, 2, 1, 3, 2, 3, 0, 4, 2, 6, 1, 5, 3, 7, 4, 5, 4, 6, 5, 7, 6, 7 };
+
+		size_t vertexBufferSize = 8 * sizeof(glm::vec4);
+		size_t indexBufferSize = 24 * sizeof(uint32_t);
+
+		AllocatedBuffer vertexBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+			VMA_MEMORY_USAGE_GPU_ONLY);
+
+		VkBufferDeviceAddressInfo const deviceAddressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = vertexBuffer.buffer };
+		VkDeviceAddress vertexBufferAddress = vkGetBufferDeviceAddress(device, &deviceAddressInfo);
+
+		AllocatedBuffer indexBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+
+		AllocatedBuffer const staging = createBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+		void* data = staging.allocation->GetMappedData();
+
+		memcpy(data, vertices, vertexBufferSize);
+		memcpy(static_cast<char*>(data) + vertexBufferSize, indices, indexBufferSize);
+
+		immediateSubmit([&](VkCommandBuffer const cmd)
+			{
+				VkBufferCopy const vertexCopy
+				{
+					.srcOffset = 0,
+					.dstOffset = 0,
+					.size = vertexBufferSize
+				};
+				vkCmdCopyBuffer(cmd, staging.buffer, vertexBuffer.buffer, 1, &vertexCopy);
+
+				VkBufferCopy const indexCopy
+				{
+					.srcOffset = vertexBufferSize,
+					.dstOffset = 0,
+					.size = indexBufferSize
+				};
+				vkCmdCopyBuffer(cmd, staging.buffer, indexBuffer.buffer, 1, &indexCopy);
+			});
+
+		destroyBuffer(staging);
+
+		lineCube.indexBuffer = indexBuffer.buffer;
+		lineCube.vertexBufferAddress = vertexBufferAddress;
+
+		lineCube.indexCount = 24;
+		lineCube.firstIndex = 0;
+
+		mainDeletionQueue.pushFunction([=, this]()
+			{
+				destroyBuffer(indexBuffer);
+				destroyBuffer(vertexBuffer);
+			});
+	}
+
+	// unit cube
+	{
+		glm::vec4 vertices[] = { {-1, -1, -1, 1}, {1, -1, -1, 1}, {1, 1, -1, 1}, {-1, 1, -1, 1}, {-1, -1, 1, 1}, {1, -1, 1, 1}, {1, 1, 1, 1}, {-1, 1, 1, 1} };
+		uint32_t indices[] = { 0, 1, 3, 3, 1, 2, 1, 5, 2, 2, 5, 6, 5, 4, 6, 6, 4, 7, 4, 0, 7, 7, 0, 3, 3, 2, 7, 7, 2, 6, 4, 5, 0, 0, 5, 1 };
+
+		size_t vertexBufferSize = 8 * sizeof(glm::vec4);
+		size_t indexBufferSize = 36 * sizeof(uint32_t);
+
+		AllocatedBuffer vertexBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+			VMA_MEMORY_USAGE_GPU_ONLY);
+
+		VkBufferDeviceAddressInfo const deviceAddressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = vertexBuffer.buffer };
+		VkDeviceAddress vertexBufferAddress = vkGetBufferDeviceAddress(device, &deviceAddressInfo);
+
+		AllocatedBuffer indexBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+
+		AllocatedBuffer const staging = createBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+		void* data = staging.allocation->GetMappedData();
+
+		memcpy(data, vertices, vertexBufferSize);
+		memcpy(static_cast<char*>(data) + vertexBufferSize, indices, indexBufferSize);
+
+		immediateSubmit([&](VkCommandBuffer const cmd)
+			{
+				VkBufferCopy const vertexCopy
+				{
+					.srcOffset = 0,
+					.dstOffset = 0,
+					.size = vertexBufferSize
+				};
+				vkCmdCopyBuffer(cmd, staging.buffer, vertexBuffer.buffer, 1, &vertexCopy);
+
+				VkBufferCopy const indexCopy
+				{
+					.srcOffset = vertexBufferSize,
+					.dstOffset = 0,
+					.size = indexBufferSize
+				};
+				vkCmdCopyBuffer(cmd, staging.buffer, indexBuffer.buffer, 1, &indexCopy);
+			});
+
+		destroyBuffer(staging);
+
+		cube.indexBuffer = indexBuffer.buffer;
+		cube.vertexBufferAddress = vertexBufferAddress;
+
+		cube.indexCount = 36;
+		cube.firstIndex = 0;
+
+		mainDeletionQueue.pushFunction([=, this]()
+			{
+				destroyBuffer(indexBuffer);
+				destroyBuffer(vertexBuffer);
+			});
+	}
+	
 }
 
 void VulkanEngine::initImgui()
@@ -1469,15 +1538,18 @@ void VulkanEngine::recreateSwapchain()
 
 void VulkanEngine::drawBackground(VkCommandBuffer const cmd) const
 {
-	ComputeEffect const& effect = backgroundEffects[currentBackgroundEffect];
+	if (!scene.environmentImage.has_value())
+	{
+		ComputeEffect const& effect = backgroundEffects[currentBackgroundEffect];
 
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
-	
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout, 0, 1, &drawImageDescriptors, 0, nullptr);
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
 
-	vkCmdPushConstants(cmd, gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout, 0, 1, &drawImageDescriptors, 0, nullptr);
 
-	vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(static_cast<float>(drawExtent.width) / 16.0f)), static_cast<uint32_t>(std::ceil(static_cast<float>(drawExtent.height) / 16.0f)), 1);
+		vkCmdPushConstants(cmd, gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
+
+		vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(static_cast<float>(drawExtent.width) / 16.0f)), static_cast<uint32_t>(std::ceil(static_cast<float>(drawExtent.height) / 16.0f)), 1);
+	}
 }
 
 void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
@@ -1555,6 +1627,122 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	writer.writeBuffer(2, pointLightBuffer.buffer, sizeof(size_t) + scene.pointLights.size() * sizeof(PointLight), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 	writer.writeBuffer(3, spotLightBuffer.buffer, sizeof(size_t) + scene.spotLights.size() * sizeof(SpotLight), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 	writer.updateSet(device, globalDescriptor);
+
+	// skybox
+	if (scene.environmentImage.has_value())
+	{
+		VkShaderModule envVertShader;
+		if (!vkUtil::load_shader_module((baseAppPath + "shaders/environment.vert.spv").c_str(), device, &envVertShader))
+		{
+			std::cerr << "Error when building environment vertex shader module";
+		}
+
+		VkShaderModule envFragShader;
+		if (!vkUtil::load_shader_module((baseAppPath + "shaders/environment.frag.spv").c_str(), device, &envFragShader))
+		{
+			std::cerr << "Error when building environment fragment shader module";
+		}
+
+		DescriptorLayoutBuilder layoutBuilder;
+		layoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		VkDescriptorSetLayout environmentLayout = layoutBuilder.build(device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+
+		VkPushConstantRange matrixRange
+		{
+			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+			.offset = 0,
+			.size = sizeof(glm::vec4)
+		};
+
+		VkDescriptorSetLayout layouts[] = { gpuSceneDataDescriptorLayout, environmentLayout };
+
+		VkPipelineLayoutCreateInfo meshLayoutInfo = vkInit::pipeline_layout_create_info();
+		meshLayoutInfo.setLayoutCount = 2;
+		meshLayoutInfo.pSetLayouts = layouts;
+		meshLayoutInfo.pPushConstantRanges = &matrixRange;
+		meshLayoutInfo.pushConstantRangeCount = 1;
+
+		VkPipelineLayout newLayout;
+		VK_CHECK(vkCreatePipelineLayout(device, &meshLayoutInfo, nullptr, &newLayout));
+
+		PipelineBuilder pipelineBuilder;
+		pipelineBuilder.setShaders(envVertShader, envFragShader);
+		pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+		pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
+		pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+		pipelineBuilder.setMultisamplingNone();
+		pipelineBuilder.disableBlending();
+		pipelineBuilder.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
+
+		pipelineBuilder.setColorAttachmentFormat(drawImage.imageFormat);
+		pipelineBuilder.setDepthFormat(depthImage.imageFormat);
+
+		pipelineBuilder.pipelineLayout = newLayout;
+
+		VkPipeline newPipeline = pipelineBuilder.buildPipeline(device);
+
+		vkDestroyShaderModule(device, envVertShader, nullptr);
+		vkDestroyShaderModule(device, envFragShader, nullptr);
+
+		DescriptorWriter writer;
+		writer.writeBuffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		writer.updateSet(device, globalDescriptor);
+
+		writer.clear();
+
+		VkDescriptorSet environmentDescriptor = getCurrentFrame().frameDescriptors.allocate(device, environmentLayout);
+		writer.writeImage(0, scene.environmentImage->imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		writer.updateSet(device, environmentDescriptor);
+
+		// Draw
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newPipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 0, 1, &globalDescriptor, 0, nullptr);
+
+		VkViewport const viewport
+		{
+			.x = 0.0f,
+			.y = 0.0f,
+			.width = static_cast<float>(drawExtent.width),
+			.height = static_cast<float>(drawExtent.height),
+			.minDepth = 0.0f,
+			.maxDepth = 1.0f
+		};
+		vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+		VkRect2D const scissor
+		{
+			.offset
+			{
+				.x = 0,
+				.y = 0
+			},
+			.extent
+			{
+				.width = drawExtent.width,
+				.height = drawExtent.height
+			}
+		};
+		vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 1, 1, &environmentDescriptor, 0, nullptr);
+
+		vkCmdBindIndexBuffer(cmd, cube.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+		vkCmdPushConstants(cmd, newLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VkDeviceAddress), &cube.vertexBufferAddress);
+
+		vkCmdDrawIndexed(cmd, cube.indexCount, 1, 0, 0, 0);
+
+		stats.drawCallCount++;
+		stats.triangleCount += static_cast<int>(cube.indexCount) / 3;
+
+		getCurrentFrame().deletionQueue.pushFunction([=, this]()
+			{
+				vkDestroyDescriptorSetLayout(device, environmentLayout, nullptr);
+				vkDestroyPipelineLayout(device, newLayout, nullptr);
+				vkDestroyPipeline(device, newPipeline, nullptr);
+			});
+		
+	}
 
 	MaterialPipeline* lastPipeline = nullptr;
 	MaterialInstance* lastMaterial = nullptr;
@@ -1637,16 +1825,16 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline->layout, 1, 1, &object.material->materialSet, 0, nullptr);
 		}
 
-		if (object.indexBuffer != lastIndexBuffer)
+		if (object.meshData.indexBuffer != lastIndexBuffer)
 		{
-			lastIndexBuffer = object.indexBuffer;
-			vkCmdBindIndexBuffer(cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+			lastIndexBuffer = object.meshData.indexBuffer;
+			vkCmdBindIndexBuffer(cmd, object.meshData.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 		}
 
 		GPUDrawPushConstants pushConstants{};
 		pushConstants.modelMatrix = object.transform;
 		pushConstants.normalMatrix = glm::transpose(glm::inverse(glm::mat3(object.transform)));
-		pushConstants.vertexBuffer = object.vertexBufferAddress;
+		pushConstants.vertexBuffer = object.meshData.vertexBufferAddress;
 
 		vkCmdPushConstants(cmd, object.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
@@ -1656,7 +1844,7 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 		vkCmdDrawIndexedIndirect(cmd, drawIndirectCommandBuffer.buffer, indirectOffset, 1, stride);
 
 		stats.drawCallCount++;
-		stats.triangleCount += static_cast<int>(object.indexCount) / 3;
+		stats.triangleCount += static_cast<int>(object.meshData.indexCount) / 3;
 	};
 
 	size_t cmdIdx = 0;
@@ -1707,28 +1895,30 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 		}
 		boundDebugPipeline = true;
 
-		if (object.indexBuffer != lastIndexBuffer)
+		if (object.meshData.indexBuffer != lastIndexBuffer)
 		{
-			lastIndexBuffer = object.indexBuffer;
-			vkCmdBindIndexBuffer(cmd, object.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+			lastIndexBuffer = object.meshData.indexBuffer;
+			vkCmdBindIndexBuffer(cmd, object.meshData.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 		}
 
 		GPUDrawPushConstants pushConstants{};
 		pushConstants.modelMatrix = object.transform;
 		pushConstants.normalMatrix = glm::transpose(glm::inverse(glm::mat3(object.transform)));
-		pushConstants.vertexBuffer = object.vertexBufferAddress;
+		pushConstants.vertexBuffer = object.meshData.vertexBufferAddress;
 
 		vkCmdPushConstants(cmd, defaultPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
-		vkCmdDrawIndexed(cmd, object.indexCount, 1, 0, 0, 0);
+		vkCmdDrawIndexed(cmd, object.meshData.indexCount, 1, 0, 0, 0);
 
 		stats.drawCallCount++;
 	};
 	
 	if (debugDrawFrustum)
 	{
-		cube.transform = glm::inverse(sceneData.cullViewProj);
-		debugDraw(cube, cmdIdx);
+		RenderObject frustum;
+		frustum.meshData = lineCube;
+		frustum.transform = glm::inverse(sceneData.cullViewProj);
+		debugDraw(frustum, cmdIdx);
 		++cmdIdx;
 	}
 
