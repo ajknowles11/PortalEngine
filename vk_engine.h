@@ -220,6 +220,7 @@ public:
 	AllocatedImage grayImage;
 	AllocatedImage errorCheckerboardImage;
 	AllocatedImage defaultNormalImage;
+	AllocatedImage defaultCubeImage;
 
 	VkSampler defaultSamplerLinear;
 	VkSampler defaultSamplerNearest;

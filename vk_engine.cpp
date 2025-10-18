@@ -332,15 +332,22 @@ void VulkanEngine::queueLoadHDRI(std::string const filePath)
 
 void VulkanEngine::loadHDRI(std::string_view const filePath)
 {
-	std::optional<AllocatedImage> newSkyboxImage = load_cubemap_from_hdri(this, filePath);
+	std::optional<Skybox> newSkyboxImage = load_cubemap_from_hdri(this, filePath);
 	assert(newSkyboxImage.has_value());
 
-	if (scene.environmentImage.has_value())
+	if (scene.skybox.environmentMap.has_value())
 	{
-		destroyImage(*scene.environmentImage);
-		scene.environmentImage = std::nullopt;
+		destroyImage(*scene.skybox.environmentMap);
+		scene.skybox.environmentMap = std::nullopt;
 	}
-	scene.environmentImage = *newSkyboxImage;
+	if (scene.skybox.irradianceMap.has_value())
+	{
+		destroyImage(*scene.skybox.irradianceMap);
+		scene.skybox.irradianceMap = std::nullopt;
+	}
+
+	scene.skybox.environmentMap = newSkyboxImage->environmentMap;
+	scene.skybox.irradianceMap = newSkyboxImage->irradianceMap;
 }
 
 void VulkanEngine::draw()
@@ -686,12 +693,6 @@ void VulkanEngine::run()
 				SDL_ShowOpenFileDialog(openHDRIFile, this, nullptr, dialogFileFilters, 1, baseAppPath.c_str(), false);
 			}
 
-			float newAmbient[] = { sceneData.ambientColor.r, sceneData.ambientColor.g, sceneData.ambientColor.b };
-			if (ImGui::ColorPicker3("Ambient Color", newAmbient))
-			{
-				sceneData.ambientColor = glm::vec4(newAmbient[0], newAmbient[1], newAmbient[2], 1.0f);
-			}
-
 			if (!scene.directionalLights.empty())
 			{
 				float newSunColor[] = { scene.directionalLights[0].color.r, scene.directionalLights[0].color.g, scene.directionalLights[0].color.b};
@@ -818,18 +819,25 @@ void VulkanEngine::initScene(std::shared_ptr<LoadedGLTF> const newScene)
 		pl.quadratic = 0.017f;
 		scene.pointLights.push_back(pl);
 	}
-
-	sceneData.ambientColor = glm::vec4(0.1f);
 }
 
 void VulkanEngine::cleanupScene() 
 {
 	sceneDeletionQueue.flush();
-	if (scene.environmentImage.has_value())
+	if (scene.skybox.environmentMap.has_value())
 	{
-		destroyImage(*scene.environmentImage);
-		scene.environmentImage = std::nullopt;
+		destroyImage(*scene.skybox.environmentMap);
+		scene.skybox.environmentMap = std::nullopt;
 	}
+	if (scene.skybox.irradianceMap.has_value())
+	{
+		destroyImage(*scene.skybox.irradianceMap);
+		scene.skybox.irradianceMap = std::nullopt;
+	}
+	scene.directionalLights.clear();
+	scene.pointLights.clear();
+	scene.spotLights.clear();
+
 	scene.staticGeometry = nullptr;
 	indirectDrawInitialized = false;
 }
@@ -1031,6 +1039,8 @@ void VulkanEngine::initDescriptors()
 		builder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 		builder.addBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 		builder.addBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+		builder.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		builder.addBinding(5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 		gpuSceneDataDescriptorLayout = builder.build(device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 	}
 	{
@@ -1263,6 +1273,49 @@ void VulkanEngine::initDefaultData()
 	defaultNormalImage = createImage(&defaultNormal, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
 
+	{
+		VkExtent3D size
+		{
+			.width = 1,
+			.height = 1,
+			.depth = 6
+		};
+		uint32_t const defaultCube = glm::packUnorm4x8(glm::vec4(0, 0, 0, 1));
+		size_t const dataSize = 24;
+		AllocatedBuffer const uploadBuffer = createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+		memcpy(uploadBuffer.info.pMappedData, &defaultCube, dataSize);
+
+		AllocatedImage const newImage = createImage(size, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+		size.depth = 1;
+		immediateSubmit([&](VkCommandBuffer const cmd)
+			{
+				vkUtil::transition_image(cmd, newImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+				VkBufferImageCopy const copyRegion
+				{
+					.bufferOffset = 0,
+					.bufferRowLength = 0,
+					.bufferImageHeight = 0,
+					.imageSubresource
+					{
+						.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+						.mipLevel = 0,
+						.baseArrayLayer = 0,
+						.layerCount = 6,
+					},
+					.imageExtent = size
+				};
+
+				vkCmdCopyBufferToImage(cmd, uploadBuffer.buffer, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+				vkUtil::transition_image(cmd, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			});
+
+		destroyBuffer(uploadBuffer);
+		defaultCubeImage = newImage;
+	}
+
 	VkSamplerCreateInfo samplerCreateInfo = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 
 	samplerCreateInfo.magFilter = VK_FILTER_NEAREST;
@@ -1284,6 +1337,7 @@ void VulkanEngine::initDefaultData()
 		destroyImage(blackImage);
 		destroyImage(errorCheckerboardImage);
 		destroyImage(defaultNormalImage);
+		destroyImage(defaultCubeImage);
 	});
 
 	PBRMaterial::MaterialResources materialResources;
@@ -1540,7 +1594,7 @@ void VulkanEngine::recreateSwapchain()
 
 void VulkanEngine::drawBackground(VkCommandBuffer const cmd) const
 {
-	if (!scene.environmentImage.has_value())
+	if (!scene.skybox.environmentMap.has_value())
 	{
 		ComputeEffect const& effect = backgroundEffects[currentBackgroundEffect];
 
@@ -1628,10 +1682,13 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	writer.writeBuffer(1, directionalLightBuffer.buffer, sizeof(size_t) + scene.directionalLights.size() * sizeof(DirectionalLight), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 	writer.writeBuffer(2, pointLightBuffer.buffer, sizeof(size_t) + scene.pointLights.size() * sizeof(PointLight), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 	writer.writeBuffer(3, spotLightBuffer.buffer, sizeof(size_t) + scene.spotLights.size() * sizeof(SpotLight), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+	writer.writeImage(4, scene.skybox.environmentMap.has_value() ? scene.skybox.environmentMap->imageView : defaultCubeImage.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	writer.writeImage(5, scene.skybox.irradianceMap.has_value() ? scene.skybox.irradianceMap->imageView : defaultCubeImage.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	
 	writer.updateSet(device, globalDescriptor);
 
 	// skybox
-	if (scene.environmentImage.has_value())
+	if (scene.skybox.environmentMap.has_value())
 	{
 		VkShaderModule envVertShader;
 		if (!vkUtil::load_shader_module((baseAppPath + "shaders/environment.vert.spv").c_str(), device, &envVertShader))
@@ -1693,7 +1750,7 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 		writer.clear();
 
 		VkDescriptorSet environmentDescriptor = getCurrentFrame().frameDescriptors.allocate(device, environmentLayout);
-		writer.writeImage(0, scene.environmentImage->imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		writer.writeImage(0, scene.skybox.environmentMap->imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 		writer.updateSet(device, environmentDescriptor);
 
 		// Draw

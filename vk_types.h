@@ -133,5 +133,10 @@ struct GPUSceneData
 	glm::mat4 proj;
 	glm::mat4 viewProj;
 	glm::mat4 cullViewProj;
-	glm::vec4 ambientColor;
+};
+
+struct Skybox
+{
+	std::optional<AllocatedImage> environmentMap;
+	std::optional<AllocatedImage> irradianceMap;
 };

@@ -727,9 +727,10 @@ void LoadedGLTF::clearAll()
 	}
 }
 
-std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::string_view filePath)
+std::optional<Skybox> load_cubemap_from_hdri(VulkanEngine* engine, std::string_view filePath)
 {
-	static int const cubeMapSize = 512;
+	static int const envMapSize = 512;
+	static int const irrMapSize = 32;
 
 	int width, height, nrChannels;
 	float* data = stbi_loadf(filePath.data(), &width, &height, &nrChannels, 0);
@@ -761,6 +762,7 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 				rgbaData[4 * i + 2] = data[3 * i + 2];
 				rgbaData[4 * i + 3] = 1.0f;
 			}
+			stbi_image_free(data);
 
 			AllocatedImage const uploadImage = engine->createImage(rgbaData, imageSize, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 
@@ -780,15 +782,26 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 			delete[] rgbaData;
 		}
 		
-		AllocatedImage cubemapImage{};
+		AllocatedImage envMapImage{};
 		{
-			VkExtent3D cubemapExtent
+			VkExtent3D envMapExtent
 			{
-				.width = cubeMapSize,
-				.height = cubeMapSize,
+				.width = envMapSize,
+				.height = envMapSize,
 				.depth = 6
 			};
-			cubemapImage = engine->createImage(cubemapExtent, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+			envMapImage = engine->createImage(envMapExtent, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+		}
+
+		AllocatedImage irrMapImage{};
+		{
+			VkExtent3D irrMapExtent
+			{
+				.width = irrMapSize,
+				.height = irrMapSize,
+				.depth = 6
+			};
+			irrMapImage = engine->createImage(irrMapExtent, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 		}
 		
 		VkSampler hdriSampler;
@@ -824,7 +837,6 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 			computeDescriptor = alloc.allocate(engine->device, computeLayout, nullptr);
 		}
 
-		VkPipeline computePipeline;
 		VkPipelineLayout computePipelineLayout;
 		{
 			VkPipelineLayoutCreateInfo const computeLayoutInfo
@@ -835,11 +847,15 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 				.pSetLayouts = &computeLayout
 			};
 			VK_CHECK(vkCreatePipelineLayout(engine->device, &computeLayoutInfo, nullptr, &computePipelineLayout));
+		}
 
-			VkShaderModule cubemapShader;
-			if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/make_cubemap.comp.spv").c_str(), engine->device, &cubemapShader))
+		VkPipeline makeEnvPipeline;
+		{
+			VkShaderModule makeEnvShader;
+			if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/make_environment_map.comp.spv").c_str(), engine->device, &makeEnvShader))
 			{
-				std::cerr << "Error when building cubemap compute shader module";
+				std::cerr << "Error when building environment map compute shader module";
+				return std::nullopt;
 			}
 
 			VkPipelineShaderStageCreateInfo stageInfo
@@ -847,11 +863,11 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 				.pNext = nullptr,
 				.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-				.module = cubemapShader,
+				.module = makeEnvShader,
 				.pName = "main"
 			};
 
-			VkComputePipelineCreateInfo computePipelineCreateInfo
+			VkComputePipelineCreateInfo makeEnvPipelineCreateInfo
 			{
 				.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
 				.pNext = nullptr,
@@ -859,42 +875,89 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 				.layout = computePipelineLayout
 			};
 
-			VK_CHECK(vkCreateComputePipelines(engine->device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &computePipeline));
+			VK_CHECK(vkCreateComputePipelines(engine->device, VK_NULL_HANDLE, 1, &makeEnvPipelineCreateInfo, nullptr, &makeEnvPipeline));
 		
-			vkDestroyShaderModule(engine->device, cubemapShader, nullptr);
+			vkDestroyShaderModule(engine->device, makeEnvShader, nullptr);
+		}
+
+		VkPipeline makeIrrPipeline;
+		{
+			VkShaderModule makeIrrShader;
+			if (!vkUtil::load_shader_module((engine->baseAppPath + "shaders/make_irradiance_map.comp.spv").c_str(), engine->device, &makeIrrShader))
+			{
+				std::cerr << "Error when building irradiance map compute shader module";
+				return std::nullopt;
+			}
+
+			VkPipelineShaderStageCreateInfo stageInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.pNext = nullptr,
+				.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+				.module = makeIrrShader,
+				.pName = "main"
+			};
+
+			VkComputePipelineCreateInfo makeIrrPipelineCreateInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+				.pNext = nullptr,
+				.stage = stageInfo,
+				.layout = computePipelineLayout
+			};
+
+			VK_CHECK(vkCreateComputePipelines(engine->device, VK_NULL_HANDLE, 1, &makeIrrPipelineCreateInfo, nullptr, &makeIrrPipeline));
+
+			vkDestroyShaderModule(engine->device, makeIrrShader, nullptr);
 		}
 
 		// render to cubemap here
 		{
 			DescriptorWriter writer;
 			writer.writeImage(0, hdrImage.imageView, hdriSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-			writer.writeImage(1, cubemapImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+			writer.writeImage(1, envMapImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 			writer.updateSet(engine->device, computeDescriptor);
 
 			engine->immediateSubmit([&](VkCommandBuffer cmd)
 				{
-					vkUtil::transition_image(cmd, cubemapImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+					vkUtil::transition_image(cmd, envMapImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-					vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
+					vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, makeEnvPipeline);
 
 					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptor, 0, nullptr);
 
-					vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(static_cast<float>(cubeMapSize) / 16.0f)), static_cast<uint32_t>(std::ceil(static_cast<float>(cubeMapSize) / 16.0f)), 6);
+					vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(static_cast<float>(envMapSize) / 16.0f)), static_cast<uint32_t>(std::ceil(static_cast<float>(envMapSize) / 16.0f)), 6);
 
-					vkUtil::transition_image(cmd, cubemapImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+					vkUtil::transition_image(cmd, envMapImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+				});
+
+			writer.writeImage(0, envMapImage.imageView, hdriSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			writer.writeImage(1, irrMapImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+			writer.updateSet(engine->device, computeDescriptor);
+
+			engine->immediateSubmit([&](VkCommandBuffer cmd)
+				{
+					vkUtil::transition_image(cmd, irrMapImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+					vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, makeIrrPipeline);
+
+					vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptor, 0, nullptr);
+
+					vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(static_cast<float>(irrMapSize) / 16.0f)), static_cast<uint32_t>(std::ceil(static_cast<float>(irrMapSize) / 16.0f)), 6);
+
+					vkUtil::transition_image(cmd, irrMapImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 				});
 		}
 
 		alloc.destroyPools(engine->device);
 		vkDestroyDescriptorSetLayout(engine->device, computeLayout, nullptr);
 		vkDestroyPipelineLayout(engine->device, computePipelineLayout, nullptr);
-		vkDestroyPipeline(engine->device, computePipeline, nullptr);
+		vkDestroyPipeline(engine->device, makeEnvPipeline, nullptr);
+		vkDestroyPipeline(engine->device, makeIrrPipeline, nullptr);
 		vkDestroySampler(engine->device, hdriSampler, nullptr);
 		engine->destroyImage(hdrImage);
 
-		stbi_image_free(data);
-
-		return cubemapImage;
+		return Skybox{ envMapImage, irrMapImage };
 	}
 	else
 	{

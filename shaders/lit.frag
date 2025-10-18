@@ -34,6 +34,11 @@ vec3 FresnelSchlick(float cosTheta, vec3 F0)
 	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0, 1.0), 5.0);
 }
 
+vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+{
+	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0, 1.0), 5.0);
+}
+
 float DistributionGGX(vec3 N, vec3 H, float roughness) 
 {
 	float a = roughness * roughness;
@@ -69,14 +74,11 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 	return ggx1 * ggx2;
 }
 
-vec3 AddLight(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo, float metallic, float roughness)
+vec3 AddLight(vec3 N, vec3 V, vec3 L, vec3 F0, vec3 radiance, vec3 albedo, float metallic, float roughness)
 {
 	vec3 H = normalize(V + L);
 
-	vec3 F0 = vec3(0.04);
-	F0 = mix(F0, albedo, metallic);
 	vec3 F = FresnelSchlick(max(dot(H, V), 0), F0);
-
 	float NDF = DistributionGGX(N, H, roughness);
 	float G = GeometrySmith(N, V, L, roughness);
 
@@ -112,6 +114,9 @@ void main()
 	vec3 viewPos = vec3(sceneData.invView[3]);
 	vec3 viewDir = normalize(viewPos - inFragPos);
 
+	vec3 F0 = vec3(0.04);
+	F0 = mix(F0, albedo, metallic);
+
 	// integrate all light sources
 	vec3 Lo = vec3(0);
 	for (int i = 0; i < directionalLights.count; i++) 
@@ -122,7 +127,7 @@ void main()
 
 		vec3 radiance = light.color * light.intensity;
 
-		Lo += AddLight(normal, viewDir, L, radiance, albedo, metallic, roughness);
+		Lo += AddLight(normal, viewDir, L, F0, radiance, albedo, metallic, roughness);
 	}
 	for (int i = 0; i < pointLights.count; i++)
 	{
@@ -134,7 +139,7 @@ void main()
 		float attenuation = 1.0 / (light.constant + light.linear * dist + light.quadratic * (dist * dist));
 		vec3 radiance = light.color * attenuation;
 
-		Lo += AddLight(normal, viewDir, L, radiance, albedo, metallic, roughness);
+		Lo += AddLight(normal, viewDir, L, F0, radiance, albedo, metallic, roughness);
 	}
 	for (int i = 0; i < spotLights.count; i++)
 	{
@@ -150,11 +155,17 @@ void main()
 
 			vec3 radiance = light.color * light.intensity;
 
-			Lo += AddLight(normal, viewDir, L, radiance, albedo, metallic, roughness);
+			Lo += AddLight(normal, viewDir, L, F0, radiance, albedo, metallic, roughness);
 		}
 	}
 
-	vec3 ambient = sceneData.ambientColor.xyz * albedo * ao;
+	// ambient (IBL)
+	vec3 kS = FresnelSchlickRoughness(max(dot(normal, viewDir), 0.0), F0, roughness);
+	vec3 kD = 1.0 - kS;
+	vec3 irradiance = texture(irradianceMap, normal).rgb;
+	vec3 diffuse = irradiance * albedo;
+	vec3 ambient = (kD * diffuse);// * ao;
+
 	vec3 color = ambient + Lo;
 	outFragColor = vec4(color, texel.w * materialData.colorFactors.w);
 }

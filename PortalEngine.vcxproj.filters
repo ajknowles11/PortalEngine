@@ -194,7 +194,10 @@
     <None Include="shaders\environment.vert">
       <Filter>Shader Files</Filter>
     </None>
-    <None Include="shaders\make_cubemap.comp">
+    <None Include="shaders\make_environment_map.comp">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shaders\make_irradiance_map.comp">
       <Filter>Shader Files</Filter>
     </None>
   </ItemGroup>

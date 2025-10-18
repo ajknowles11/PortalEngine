@@ -5,7 +5,6 @@ layout(set = 0, binding = 0) uniform SceneData
 	mat4 proj;
 	mat4 viewProj;
 	mat4 cullViewProj;
-	vec4 ambientColor;
 } sceneData;
 
 struct DirectionalLight
@@ -58,6 +57,7 @@ layout (set = 0, binding = 3) readonly buffer SpotLights
 } spotLights;
 
 layout (set = 0, binding = 4) uniform samplerCube environmentMap;
+layout (set = 0, binding = 5) uniform samplerCube irradianceMap;
 
 layout(set = 1, binding = 0) uniform PBRMaterialData
 {  

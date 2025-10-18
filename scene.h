@@ -42,5 +42,5 @@ public:
 	std::vector<PointLight> pointLights;
 	std::vector<SpotLight> spotLights;
 
-	std::optional<AllocatedImage> environmentImage;
+	Skybox skybox;
 };

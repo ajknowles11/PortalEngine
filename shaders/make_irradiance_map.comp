@@ -1,0 +1,67 @@
+#version 460
+
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0) uniform samplerCube inEnvironmentMap;
+
+layout(set = 0, binding = 1) writeonly uniform imageCube outIrradianceMap;
+
+#define PI 3.14159265358979
+
+void main() 
+{
+	ivec3 texelCoord = ivec3(gl_GlobalInvocationID);
+	ivec2 size = imageSize(outIrradianceMap);
+
+	if(texelCoord.x < size.x && texelCoord.y < size.y && texelCoord.z < 6)
+	{
+		// first convert cubemap point coords to direction vector
+		vec3 v;
+		vec3 p = texelCoord;
+		vec2 s = size;
+		switch (texelCoord.z)
+		{
+			case 0: 
+				v = normalize(vec3(0.5, p.y / s.y - 0.5, 1 - p.x / s.x - 0.5));
+				break;
+			case 1:
+				v = normalize(vec3(-0.5, p.y / s.y - 0.5, p.x / s.x - 0.5));
+				break;
+			case 2:
+				v = normalize(vec3(p.x / s.x - 0.5, 0.5, p.y / s.y - 0.5));
+				break;
+			case 3:
+				v = normalize(vec3(p.x / s.x - 0.5, -0.5, 1 - p.y / s.y - 0.5));
+				break;
+			case 4:
+				v = normalize(vec3(p.x / s.x - 0.5, p.y / s.y - 0.5, 0.5));
+				break;
+			case 5:
+				v = normalize(vec3(1 - p.x / s.x - 0.5, p.y / s.y - 0.5, -0.5));
+				break;
+		}
+
+		vec3 irradiance = vec3(0.0);
+
+		vec3 up = vec3(0, 1, 0);
+		vec3 right = normalize(cross(up, v));
+		up = normalize(cross(v, right));
+
+		float sampleDelta = 0.025;
+		float numSamples = 0.0;
+		for (float phi = 0.0; phi < 2.0 * PI; phi += sampleDelta)
+		{
+			for (float theta = 0.0; theta < 0.5 * PI; theta += sampleDelta)
+			{
+				vec3 tangentSample = vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
+				vec3 sampleVec = tangentSample.x * right + tangentSample.y * up + tangentSample.z * v;
+
+				irradiance += texture(inEnvironmentMap, sampleVec).rgb * cos(theta) * sin(theta);
+				numSamples++;
+			}
+		}
+		irradiance = PI * irradiance * (1.0 / numSamples);
+
+		imageStore(outIrradianceMap, texelCoord, vec4(irradiance, 1));
+	}
+}

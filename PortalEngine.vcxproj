@@ -213,7 +213,8 @@
     <None Include="shaders\gradient.comp" />
     <None Include="shaders\input_structures.glsl" />
     <None Include="shaders\lit.frag" />
-    <None Include="shaders\make_cubemap.comp" />
+    <None Include="shaders\make_environment_map.comp" />
+    <None Include="shaders\make_irradiance_map.comp" />
     <None Include="shaders\mesh.vert" />
     <None Include="shaders\normals.frag" />
     <None Include="shaders\sky.comp" />

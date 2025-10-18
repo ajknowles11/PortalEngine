@@ -9,7 +9,6 @@ layout(set = 0, binding = 0) uniform  SceneData
 	mat4 proj;
 	mat4 viewProj;
 	mat4 cullViewProj;
-	vec4 ambientColor;
 } sceneData;
 
 layout(buffer_reference, std430) readonly buffer VertexBuffer
