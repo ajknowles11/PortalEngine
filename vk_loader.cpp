@@ -762,7 +762,7 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 				rgbaData[4 * i + 3] = 1.0f;
 			}
 
-			AllocatedImage const uploadImage = engine->createImage(rgbaData, imageSize, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+			AllocatedImage const uploadImage = engine->createImage(rgbaData, imageSize, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 
 			hdrImage = engine->createImage(imageSize, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 

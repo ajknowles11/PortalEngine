@@ -257,9 +257,6 @@ void VulkanEngine::init()
 	mainCamera.window = window;
 
 	freeCamera = mainCamera;
-
-	sceneData.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent.width) / static_cast<float>(drawExtent.height), 10000.0f, 0.01f);
-	sceneData.proj[1][1] *= -1;
 }
 
 void VulkanEngine::cleanup()
@@ -498,6 +495,9 @@ void VulkanEngine::updateScene(float const delta)
 		sceneData.invView = freeCamera.getInvViewMatrix();
 	}
 	
+	sceneData.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent.width) / static_cast<float>(drawExtent.height), 10000.0f, 0.01f);
+	sceneData.proj[1][1] *= -1;
+
 	sceneData.viewProj = sceneData.proj * sceneData.view;
 	sceneData.cullViewProj = sceneData.proj * mainCamView;
 
