@@ -373,7 +373,7 @@ void VulkanEngine::draw()
 
 	vkUtil::transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-	drawBackground(cmd);
+	//drawBackground(cmd);
 	
 	vkUtil::transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	vkUtil::transition_image(cmd, depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
@@ -620,7 +620,7 @@ void VulkanEngine::run()
 		}
 		ImGui::End();
 
-		if (ImGui::Begin("Background"))
+		/*if (ImGui::Begin("Background"))
 		{
 			ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
 
@@ -633,7 +633,7 @@ void VulkanEngine::run()
 			ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
 			ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
 		}
-		ImGui::End();
+		ImGui::End();*/
 
 		if (ImGui::Begin("Graphics Settings"))
 		{
@@ -927,13 +927,12 @@ void VulkanEngine::initSwapchain()
 	// must be recreated if monitor changes resolution (or maybe just choose max possible resolution>?? idk)
 	VkExtent3D const drawImageExtent = { screenW, screenH, 1 };
 
-	drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	drawImage.imageFormat = VK_FORMAT_R8G8B8A8_SRGB;
 	drawImage.imageExtent = drawImageExtent;
 
 	VkImageUsageFlags drawImageUsages{};
 	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
 	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
 	VkImageCreateInfo const imgCreateInfo = vkInit::image_create_info(drawImage.imageFormat, drawImageUsages, drawImageExtent);
@@ -1022,9 +1021,9 @@ void VulkanEngine::initDescriptors()
 	globalDescriptorAllocator.init(device, 10, sizes);
 
 	{
-		DescriptorLayoutBuilder builder;
-		builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-		drawImageDescriptorLayout = builder.build(device, VK_SHADER_STAGE_COMPUTE_BIT);
+		//DescriptorLayoutBuilder builder;
+		//builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		//drawImageDescriptorLayout = builder.build(device, VK_SHADER_STAGE_COMPUTE_BIT);
 	}
 	{
 		DescriptorLayoutBuilder builder;
@@ -1040,12 +1039,12 @@ void VulkanEngine::initDescriptors()
 		singleImageDescriptorLayout = builder.build(device, VK_SHADER_STAGE_FRAGMENT_BIT);
 	}
 
-	drawImageDescriptors = globalDescriptorAllocator.allocate(device, drawImageDescriptorLayout);
+	//drawImageDescriptors = globalDescriptorAllocator.allocate(device, drawImageDescriptorLayout);
 
-	DescriptorWriter writer;
-	writer.writeImage(0, drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+	//DescriptorWriter writer;
+	//writer.writeImage(0, drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 
-	writer.updateSet(device, drawImageDescriptors);
+	//writer.updateSet(device, drawImageDescriptors);
 
 	for (uint32_t i = 0; i < FRAME_OVERLAP; i++)
 	{
@@ -1067,7 +1066,7 @@ void VulkanEngine::initDescriptors()
 
 	mainDeletionQueue.pushFunction([&]() 
 	{
-		vkDestroyDescriptorSetLayout(device, drawImageDescriptorLayout, nullptr);
+		//vkDestroyDescriptorSetLayout(device, drawImageDescriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, gpuSceneDataDescriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, singleImageDescriptorLayout, nullptr);
 		globalDescriptorAllocator.destroyPools(device);
@@ -1076,7 +1075,7 @@ void VulkanEngine::initDescriptors()
 
 void VulkanEngine::initPipelines()
 {
-	initBackgroundPipelines();
+	//initBackgroundPipelines();
 
 	pbrMaterial.buildPipelines(this);
 
@@ -1496,7 +1495,7 @@ void VulkanEngine::createSwapchain(uint32_t const width, uint32_t const height)
 {
 	vkb::SwapchainBuilder swapchainBuilder{ selectedGPU, device, surface };
 
-	swapchainImageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+	swapchainImageFormat = VK_FORMAT_R8G8B8A8_SRGB;
 
 	vkb::Swapchain vkbSwapchain = swapchainBuilder
 		.set_desired_format(VkSurfaceFormatKHR{ .format = swapchainImageFormat, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR })
@@ -2071,8 +2070,7 @@ AllocatedImage VulkanEngine::createImage(VkExtent3D const size, VkFormat const f
 
 AllocatedImage VulkanEngine::createImage(void const* data, VkExtent3D const size, VkFormat const format, VkImageUsageFlags const usage, bool const mipmapped) const
 {
-	size_t const channelSize = format == VK_FORMAT_R16G16B16A16_SFLOAT ? 8 : 4; // temp fix for higher p image (cubemap)
-	size_t const dataSize = static_cast<size_t>(size.depth) * static_cast<size_t>(size.width) * static_cast<size_t>(size.height) * channelSize;
+	size_t const dataSize = static_cast<size_t>(size.depth) * static_cast<size_t>(size.width) * static_cast<size_t>(size.height) * 4 * (format == VK_FORMAT_R32G32B32A32_SFLOAT ? 4 : 1);
 	AllocatedBuffer const uploadBuffer = createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
 	memcpy(uploadBuffer.info.pMappedData, data, dataSize);

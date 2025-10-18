@@ -747,27 +747,45 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 				.depth = 1
 			};
 
-			char* newData = new char[2 * 4 * width * height]();
-			for (size_t p = 0; p < (size_t)width * (size_t)height; p++)
+			VkExtent2D const imageSize2D
 			{
-				newData[8 * p + 0] = reinterpret_cast<char*>(data)[12 * p + 2];
-				newData[8 * p + 1] = reinterpret_cast<char*>(data)[12 * p + 3];
-				newData[8 * p + 2] = reinterpret_cast<char*>(data)[12 * p + 6];
-				newData[8 * p + 3] = reinterpret_cast<char*>(data)[12 * p + 7];
-				newData[8 * p + 4] = reinterpret_cast<char*>(data)[12 * p + 10];
-				newData[8 * p + 5] = reinterpret_cast<char*>(data)[12 * p + 11];
+				.width = imageSize.width,
+				.height = imageSize.height
+			};
+
+			float* rgbaData = new float[imageSize.width * imageSize.height * 4]();
+			for (uint32_t i = 0; i < imageSize.width * imageSize.height; i++)
+			{
+				rgbaData[4 * i + 0] = data[3 * i + 0];
+				rgbaData[4 * i + 1] = data[3 * i + 1];
+				rgbaData[4 * i + 2] = data[3 * i + 2];
+				rgbaData[4 * i + 3] = 1.0f;
 			}
 
-			hdrImage = engine->createImage(newData, imageSize, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT, false);
-			delete[] newData;
+			AllocatedImage const uploadImage = engine->createImage(rgbaData, imageSize, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+
+			hdrImage = engine->createImage(imageSize, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+
+			engine->immediateSubmit([&](VkCommandBuffer const cmd)
+				{
+					vkUtil::transition_image(cmd, uploadImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+					vkUtil::transition_image(cmd, hdrImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+					vkUtil::copy_image_to_image(cmd, uploadImage.image, hdrImage.image, imageSize2D, imageSize2D);
+
+					vkUtil::transition_image(cmd, hdrImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+				});
+
+			engine->destroyImage(uploadImage);
+			delete[] rgbaData;
 		}
 		
 		AllocatedImage cubemapImage{};
 		{
 			VkExtent3D cubemapExtent
 			{
-				.width = 512,
-				.height = 512,
+				.width = cubeMapSize,
+				.height = cubeMapSize,
 				.depth = 6
 			};
 			cubemapImage = engine->createImage(cubemapExtent, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
@@ -849,7 +867,7 @@ std::optional<AllocatedImage> load_cubemap_from_hdri(VulkanEngine* engine, std::
 		// render to cubemap here
 		{
 			DescriptorWriter writer;
-			writer.writeImage(0, hdrImage.imageView, hdriSampler, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			writer.writeImage(0, hdrImage.imageView, hdriSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 			writer.writeImage(1, cubemapImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 			writer.updateSet(engine->device, computeDescriptor);
 
