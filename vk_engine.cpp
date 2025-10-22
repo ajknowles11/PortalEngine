@@ -783,7 +783,7 @@ void VulkanEngine::initScene(std::shared_ptr<LoadedGLTF> const newScene)
 	{
 		PointLight pl;
 		pl.position = glm::vec3(3, 3, 3);
-		pl.color = glm::vec3(1, 1, 1);
+		pl.color = glm::vec3(0, 0, 1);
 		pl.constant = 1.0f;
 		pl.linear = 0.07f;
 		pl.quadratic = 0.017f;
@@ -793,7 +793,7 @@ void VulkanEngine::initScene(std::shared_ptr<LoadedGLTF> const newScene)
 	{
 		PointLight pl;
 		pl.position = glm::vec3(3, -3, 3);
-		pl.color = glm::vec3(1, 1, 1);
+		pl.color = glm::vec3(0, 0, 1);
 		pl.constant = 1.0f;
 		pl.linear = 0.07f;
 		pl.quadratic = 0.017f;
@@ -803,7 +803,7 @@ void VulkanEngine::initScene(std::shared_ptr<LoadedGLTF> const newScene)
 	{
 		PointLight pl;
 		pl.position = glm::vec3(-3, 3, 3);
-		pl.color = glm::vec3(1, 1, 1);
+		pl.color = glm::vec3(0, 0, 1);
 		pl.constant = 1.0f;
 		pl.linear = 0.07f;
 		pl.quadratic = 0.017f;
@@ -813,12 +813,21 @@ void VulkanEngine::initScene(std::shared_ptr<LoadedGLTF> const newScene)
 	{
 		PointLight pl;
 		pl.position = glm::vec3(-3, -3, 3);
-		pl.color = glm::vec3(1, 1, 1);
+		pl.color = glm::vec3(0, 0, 1);
 		pl.constant = 1.0f;
 		pl.linear = 0.07f;
 		pl.quadratic = 0.017f;
 		scene.pointLights.push_back(pl);
 	}
+
+	SpotLight sl;
+	sl.position = glm::vec3(-5, 0, 0);
+	sl.color = glm::vec3(1, 0, 0);
+	sl.innerCutOff = 0.1f;
+	sl.outerCutOff = 0.12f;
+	sl.direction = glm::vec3(1, 0, 0);
+	sl.intensity = 1;
+	scene.spotLights.push_back(sl);
 }
 
 void VulkanEngine::cleanupScene() 
@@ -1036,11 +1045,9 @@ void VulkanEngine::initDescriptors()
 	{
 		DescriptorLayoutBuilder builder;
 		builder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-		builder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-		builder.addBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-		builder.addBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-		builder.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-		builder.addBinding(5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		builder.addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		builder.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		builder.addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 		gpuSceneDataDescriptorLayout = builder.build(device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 	}
 	{
@@ -1639,51 +1646,74 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	GPUSceneData* sceneUniformData = static_cast<GPUSceneData*>(gpuSceneDataBuffer.allocation->GetMappedData());
 	memcpy(sceneUniformData, &sceneData, sizeof(GPUSceneData));
 
-	AllocatedBuffer const directionalLightBuffer = createBuffer(sizeof(size_t) + scene.directionalLights.size() * sizeof(DirectionalLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-	getCurrentFrame().deletionQueue.pushFunction([=, this]()
-		{
-			destroyBuffer(directionalLightBuffer);
-		});
-	size_t* directionalLightData = static_cast<size_t*>(directionalLightBuffer.allocation->GetMappedData());
-	*directionalLightData = scene.directionalLights.size();
-	if (scene.directionalLights.size() > 0)
+	GPULightData lightData =
 	{
-		memcpy(directionalLightData + 2, scene.directionalLights.data(), scene.directionalLights.size() * sizeof(DirectionalLight));
+		.directionalLightCount = static_cast<unsigned int>(scene.directionalLights.size()),
+		.pointLightCount = static_cast<unsigned int>(scene.pointLights.size()),
+		.spotLightCount = static_cast<unsigned int>(scene.spotLights.size()),
+
+		.directionalLights = 0,
+		.pointLights = 0,
+		.spotLights = 0
+	};
+
+	if (lightData.directionalLightCount > 0)
+	{
+		AllocatedBuffer const directionalLightBuffer = createBuffer(scene.directionalLights.size() * sizeof(DirectionalLight), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		getCurrentFrame().deletionQueue.pushFunction([=, this]()
+			{
+				destroyBuffer(directionalLightBuffer);
+			});
+		DirectionalLight* directionalLightData = static_cast<DirectionalLight*>(directionalLightBuffer.allocation->GetMappedData());
+		memcpy(directionalLightData, scene.directionalLights.data(), lightData.directionalLightCount * sizeof(DirectionalLight));
+		
+		VkBufferDeviceAddressInfo const deviceAddressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = directionalLightBuffer.buffer };
+		lightData.directionalLights = vkGetBufferDeviceAddress(device, &deviceAddressInfo);
 	}
 
-	AllocatedBuffer const pointLightBuffer = createBuffer(sizeof(size_t) + scene.pointLights.size() * sizeof(PointLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-	getCurrentFrame().deletionQueue.pushFunction([=, this]()
-		{
-			destroyBuffer(pointLightBuffer);
-		});
-	size_t* pointLightData = static_cast<size_t*>(pointLightBuffer.allocation->GetMappedData());
-	*pointLightData = scene.pointLights.size();
-	if (scene.pointLights.size() > 0)
+	if (lightData.pointLightCount > 0)
 	{
-		memcpy(pointLightData + 2, scene.pointLights.data(), scene.pointLights.size() * sizeof(PointLight));
+		AllocatedBuffer const pointLightBuffer = createBuffer(scene.pointLights.size() * sizeof(PointLight), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		getCurrentFrame().deletionQueue.pushFunction([=, this]()
+			{
+				destroyBuffer(pointLightBuffer);
+			});
+		PointLight* pointLightData = static_cast<PointLight*>(pointLightBuffer.allocation->GetMappedData());
+		memcpy(pointLightData, scene.pointLights.data(), lightData.pointLightCount * sizeof(PointLight));
+		
+		VkBufferDeviceAddressInfo const deviceAddressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = pointLightBuffer.buffer };
+		lightData.pointLights = vkGetBufferDeviceAddress(device, &deviceAddressInfo);
 	}
 
-	AllocatedBuffer const spotLightBuffer = createBuffer(sizeof(size_t) + scene.spotLights.size() * sizeof(SpotLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	if (lightData.spotLightCount > 0)
+	{
+		AllocatedBuffer const spotLightBuffer = createBuffer(scene.spotLights.size() * sizeof(SpotLight), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		getCurrentFrame().deletionQueue.pushFunction([=, this]()
+			{
+				destroyBuffer(spotLightBuffer);
+			});
+		SpotLight* spotLightData = static_cast<SpotLight*>(spotLightBuffer.allocation->GetMappedData());
+		memcpy(spotLightData, scene.spotLights.data(), lightData.spotLightCount * sizeof(SpotLight));
+
+		VkBufferDeviceAddressInfo const deviceAddressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = spotLightBuffer.buffer };
+		lightData.spotLights = vkGetBufferDeviceAddress(device, &deviceAddressInfo);
+	}
+
+	AllocatedBuffer const gpuLightDataBuffer = createBuffer(sizeof(GPULightData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 	getCurrentFrame().deletionQueue.pushFunction([=, this]()
 		{
-			destroyBuffer(spotLightBuffer);
+			destroyBuffer(gpuLightDataBuffer);
 		});
-	size_t* spotLightData = static_cast<size_t*>(spotLightBuffer.allocation->GetMappedData());
-	*spotLightData = scene.spotLights.size();
-	if (scene.spotLights.size() > 0)
-	{
-		memcpy(spotLightData + 2, scene.spotLights.data(), scene.spotLights.size() * sizeof(SpotLight));
-	}
+	GPULightData* lightUniformData = static_cast<GPULightData*>(gpuLightDataBuffer.allocation->GetMappedData());
+	memcpy(lightUniformData, &lightData, sizeof(GPULightData));
 
 	VkDescriptorSet globalDescriptor = getCurrentFrame().frameDescriptors.allocate(device, gpuSceneDataDescriptorLayout);
 
 	DescriptorWriter writer;
 	writer.writeBuffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-	writer.writeBuffer(1, directionalLightBuffer.buffer, sizeof(size_t) + scene.directionalLights.size() * sizeof(DirectionalLight), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-	writer.writeBuffer(2, pointLightBuffer.buffer, sizeof(size_t) + scene.pointLights.size() * sizeof(PointLight), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-	writer.writeBuffer(3, spotLightBuffer.buffer, sizeof(size_t) + scene.spotLights.size() * sizeof(SpotLight), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-	writer.writeImage(4, scene.skybox.environmentMap.has_value() ? scene.skybox.environmentMap->imageView : defaultCubeImage.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-	writer.writeImage(5, scene.skybox.irradianceMap.has_value() ? scene.skybox.irradianceMap->imageView : defaultCubeImage.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	writer.writeBuffer(1, gpuLightDataBuffer.buffer, sizeof(GPULightData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+	writer.writeImage(2, scene.skybox.environmentMap.has_value() ? scene.skybox.environmentMap->imageView : defaultCubeImage.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	writer.writeImage(3, scene.skybox.irradianceMap.has_value() ? scene.skybox.irradianceMap->imageView : defaultCubeImage.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 	
 	writer.updateSet(device, globalDescriptor);
 

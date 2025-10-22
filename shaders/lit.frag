@@ -119,9 +119,9 @@ void main()
 
 	// integrate all light sources
 	vec3 Lo = vec3(0);
-	for (int i = 0; i < directionalLights.count; i++) 
+	for (int i = 0; i < lightData.directionalLightCount; i++) 
 	{
-		DirectionalLight light = directionalLights.lights[i];
+		DirectionalLight light = lightData.directionalLights.lights[i];
 
 		vec3 L = normalize(-light.direction);
 
@@ -129,9 +129,9 @@ void main()
 
 		Lo += AddLight(normal, viewDir, L, F0, radiance, albedo, metallic, roughness);
 	}
-	for (int i = 0; i < pointLights.count; i++)
+	for (int i = 0; i < lightData.pointLightCount; i++)
 	{
-		PointLight light = pointLights.lights[i];
+		PointLight light = lightData.pointLights.lights[i];
 
 		vec3 L = normalize(light.position - inFragPos);
 
@@ -141,9 +141,9 @@ void main()
 
 		Lo += AddLight(normal, viewDir, L, F0, radiance, albedo, metallic, roughness);
 	}
-	for (int i = 0; i < spotLights.count; i++)
+	for (int i = 0; i < lightData.spotLightCount; i++)
 	{
-		SpotLight light = spotLights.lights[i];
+		SpotLight light = lightData.spotLights.lights[i];
 
 		vec3 L = normalize(light.position - inFragPos);
 
@@ -164,7 +164,7 @@ void main()
 	vec3 kD = 1.0 - kS;
 	vec3 irradiance = texture(irradianceMap, normal).rgb;
 	vec3 diffuse = irradiance * albedo;
-	vec3 ambient = (kD * diffuse);// * ao;
+	vec3 ambient = (kD * diffuse) * ao;
 
 	vec3 color = ambient + Lo;
 	outFragColor = vec4(color, texel.w * materialData.colorFactors.w);

@@ -135,6 +135,19 @@ struct GPUSceneData
 	glm::mat4 cullViewProj;
 };
 
+struct GPULightData
+{
+	unsigned int directionalLightCount;
+	unsigned int pointLightCount;
+	unsigned int spotLightCount;
+
+	float const pad0 = 0;
+
+	VkDeviceAddress directionalLights;
+	VkDeviceAddress pointLights;
+	VkDeviceAddress spotLights;
+};
+
 struct Skybox
 {
 	std::optional<AllocatedImage> environmentMap;

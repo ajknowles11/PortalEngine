@@ -729,7 +729,7 @@ void LoadedGLTF::clearAll()
 
 std::optional<Skybox> load_cubemap_from_hdri(VulkanEngine* engine, std::string_view filePath)
 {
-	static int const envMapSize = 512;
+	static int const envMapSize = 2048;
 	static int const irrMapSize = 32;
 
 	int width, height, nrChannels;

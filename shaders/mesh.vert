@@ -1,7 +1,6 @@
 #version 450
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_buffer_reference : require
 
 #include "input_structures.glsl"
 
@@ -26,7 +25,7 @@ layout(buffer_reference, std430) readonly buffer VertexBuffer
 	Vertex vertices[];
 };
 
-layout( push_constant ) uniform PushConstants 
+layout (push_constant) uniform PushConstants 
 {
 	mat4 modelMat;
 	mat4 normalMat;

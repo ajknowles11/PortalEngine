@@ -28,10 +28,10 @@ void main()
 				v = normalize(vec3(-0.5, p.y / s.y - 0.5, p.x / s.x - 0.5));
 				break;
 			case 2:
-				v = normalize(vec3(p.x / s.x - 0.5, 0.5, p.y / s.y - 0.5));
+				v = normalize(vec3(p.x / s.x - 0.5, -0.5, p.y / s.y - 0.5));
 				break;
 			case 3:
-				v = normalize(vec3(p.x / s.x - 0.5, -0.5, 1 - p.y / s.y - 0.5));
+				v = normalize(vec3(p.x / s.x - 0.5, 0.5, 1 - p.y / s.y - 0.5));
 				break;
 			case 4:
 				v = normalize(vec3(p.x / s.x - 0.5, p.y / s.y - 0.5, 0.5));

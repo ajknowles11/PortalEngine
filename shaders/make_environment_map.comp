@@ -50,6 +50,33 @@ void main()
 	{
 		vec2 uv = CubemapToHDRI(texelCoord, size);
 		vec3 color = texture(inHDRI, uv).rgb;
+
+//		vec3 v;
+//		vec3 p = texelCoord;
+//		vec2 s = size;
+//		switch (texelCoord.z)
+//		{
+//			case 0: 
+//				v = vec3(1, 0, 0);
+//				break;
+//			case 1:
+//				v = vec3(0, 1, 0);
+//				break;
+//			case 2:
+//				v = vec3(1, 1, 1);
+//				break;
+//			case 3:
+//				v = vec3(0, 0, 0);
+//				break;
+//			case 4:
+//				v = vec3(0, 0, 1);
+//				break;
+//			case 5:
+//				v = vec3(1, 1, 0);
+//				break;
+//		}
+//		color = v;
+
 		imageStore(outCubemap, texelCoord, vec4(color, 1));
 	}
 }

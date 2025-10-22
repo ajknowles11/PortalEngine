@@ -1,3 +1,5 @@
+#extension GL_EXT_buffer_reference : require
+
 layout(set = 0, binding = 0) uniform SceneData
 {   
 	mat4 view;
@@ -15,11 +17,10 @@ struct DirectionalLight
 	float pad0;
 };
 
-layout (set = 0, binding = 1) readonly buffer DirectionalLights
+layout (buffer_reference) readonly buffer DirectionalLights
 {
-	uint count;
 	DirectionalLight lights[];
-} directionalLights;
+};
 
 struct PointLight
 {
@@ -34,11 +35,10 @@ struct PointLight
 	float pad1, pad2;
 };
 
-layout (set = 0, binding = 2) readonly buffer PointLights
+layout (buffer_reference) readonly buffer PointLights
 {
-	uint count;
 	PointLight lights[];
-} pointLights;
+};
 
 struct SpotLight
 {
@@ -50,14 +50,24 @@ struct SpotLight
 	float intensity;
 };
 
-layout (set = 0, binding = 3) readonly buffer SpotLights
+layout (buffer_reference) readonly buffer SpotLights
 {
-	uint count;
 	SpotLight lights[];
-} spotLights;
+};
 
-layout (set = 0, binding = 4) uniform samplerCube environmentMap;
-layout (set = 0, binding = 5) uniform samplerCube irradianceMap;
+layout (set = 0, binding = 1) uniform LightData
+{
+	uint directionalLightCount;
+	uint pointLightCount;
+	uint spotLightCount;
+	float pad0;
+	DirectionalLights directionalLights;
+	PointLights pointLights;
+	SpotLights spotLights;
+} lightData;
+
+layout (set = 0, binding = 2) uniform samplerCube environmentMap;
+layout (set = 0, binding = 3) uniform samplerCube irradianceMap;
 
 layout(set = 1, binding = 0) uniform PBRMaterialData
 {  
