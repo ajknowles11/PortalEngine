@@ -99,20 +99,22 @@ void main()
 {
 	// Mip-corrected alpha clip
 	vec4 texel = texture(albedoMap, inUV);
-	float scaledAlpha = texel.a * (1 + max(0.0, CalcMipLevel(inUV * textureSize(albedoMap, 0))) * 0.25);
+	float scaledAlpha = texel.a * (1 + textureQueryLod(albedoMap, inUV).x * 0.25);
 	if (scaledAlpha < 0.5) discard;
 
 	vec4 mrao = texture(metalRoughAOMap, inUV);
 
 	vec3 albedo = texel.rgb / texel.a; // un-premultiply alpha
 	albedo *= materialData.colorFactors.rgb;
-	vec3 normal = GetNormalFromNormalMap();
+	vec3 N = GetNormalFromNormalMap();
 	float metallic = mrao.b * materialData.metalRoughFactors.r;
 	float roughness = mrao.g * materialData.metalRoughFactors.g;
 	float ao = mrao.r;
 
 	vec3 viewPos = vec3(sceneData.invView[3]);
-	vec3 viewDir = normalize(viewPos - inFragPos);
+	vec3 V = normalize(viewPos - inFragPos);
+
+	vec3 R = reflect(-V, N);
 
 	vec3 F0 = vec3(0.04);
 	F0 = mix(F0, albedo, metallic);
@@ -127,7 +129,7 @@ void main()
 
 		vec3 radiance = light.color * light.intensity;
 
-		Lo += AddLight(normal, viewDir, L, F0, radiance, albedo, metallic, roughness);
+		Lo += AddLight(N, V, L, F0, radiance, albedo, metallic, roughness);
 	}
 	for (int i = 0; i < lightData.pointLightCount; i++)
 	{
@@ -139,7 +141,7 @@ void main()
 		float attenuation = 1.0 / (light.constant + light.linear * dist + light.quadratic * (dist * dist));
 		vec3 radiance = light.color * attenuation;
 
-		Lo += AddLight(normal, viewDir, L, F0, radiance, albedo, metallic, roughness);
+		Lo += AddLight(N, V, L, F0, radiance, albedo, metallic, roughness);
 	}
 	for (int i = 0; i < lightData.spotLightCount; i++)
 	{
@@ -155,16 +157,25 @@ void main()
 
 			vec3 radiance = light.color * light.intensity;
 
-			Lo += AddLight(normal, viewDir, L, F0, radiance, albedo, metallic, roughness);
+			Lo += AddLight(N, V, L, F0, radiance, albedo, metallic, roughness);
 		}
 	}
 
 	// ambient (IBL)
-	vec3 kS = FresnelSchlickRoughness(max(dot(normal, viewDir), 0.0), F0, roughness);
+	vec3 F = FresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
+	vec3 kS = F;
 	vec3 kD = 1.0 - kS;
-	vec3 irradiance = texture(irradianceMap, normal).rgb;
+	kD *= 1.0 - metallic;
+
+	vec3 irradiance = texture(irradianceMap, N).rgb;
 	vec3 diffuse = irradiance * albedo;
-	vec3 ambient = (kD * diffuse) * ao;
+
+	const float MAX_REFLECTION_LOD = 4.0; // could instead calc dynamically (which is how it is constructed) or at least ensure consistent
+	vec3 prefilteredColor = textureLod(prefilterMap, R, roughness * MAX_REFLECTION_LOD).rgb;
+	vec2 envBRDF = texture(brdfLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
+	vec3 specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
+
+	vec3 ambient = (kD * diffuse + specular) * ao;
 
 	vec3 color = ambient + Lo;
 	outFragColor = vec4(color, texel.w * materialData.colorFactors.w);

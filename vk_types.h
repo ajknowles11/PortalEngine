@@ -152,4 +152,5 @@ struct Skybox
 {
 	std::optional<AllocatedImage> environmentMap;
 	std::optional<AllocatedImage> irradianceMap;
+	std::optional<AllocatedImage> prefilterEnvironmentMap;
 };

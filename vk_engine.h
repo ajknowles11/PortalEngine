@@ -221,6 +221,7 @@ public:
 	AllocatedImage errorCheckerboardImage;
 	AllocatedImage defaultNormalImage;
 	AllocatedImage defaultCubeImage;
+	AllocatedImage brdfLUT;
 
 	VkSampler defaultSamplerLinear;
 	VkSampler defaultSamplerNearest;

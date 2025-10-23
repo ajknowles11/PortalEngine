@@ -345,9 +345,15 @@ void VulkanEngine::loadHDRI(std::string_view const filePath)
 		destroyImage(*scene.skybox.irradianceMap);
 		scene.skybox.irradianceMap = std::nullopt;
 	}
+	if (scene.skybox.prefilterEnvironmentMap.has_value())
+	{
+		destroyImage(*scene.skybox.prefilterEnvironmentMap);
+		scene.skybox.prefilterEnvironmentMap = std::nullopt;
+	}
 
 	scene.skybox.environmentMap = newSkyboxImage->environmentMap;
 	scene.skybox.irradianceMap = newSkyboxImage->irradianceMap;
+	scene.skybox.prefilterEnvironmentMap = newSkyboxImage->prefilterEnvironmentMap;
 }
 
 void VulkanEngine::draw()
@@ -376,6 +382,16 @@ void VulkanEngine::draw()
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
 	vkUtil::transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+	VkClearColorValue clearColor = { 0, 0, 0, 1 };
+	VkImageSubresourceRange drawImageSubresourceRange =
+	{
+		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		.levelCount = 1,
+		.layerCount = 1
+	};
+
+	vkCmdClearColorImage(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, &clearColor, 1, &drawImageSubresourceRange);
 
 	//drawBackground(cmd);
 	
@@ -843,6 +859,11 @@ void VulkanEngine::cleanupScene()
 		destroyImage(*scene.skybox.irradianceMap);
 		scene.skybox.irradianceMap = std::nullopt;
 	}
+	if (scene.skybox.prefilterEnvironmentMap.has_value())
+	{
+		destroyImage(*scene.skybox.prefilterEnvironmentMap);
+		scene.skybox.prefilterEnvironmentMap = std::nullopt;
+	}
 	scene.directionalLights.clear();
 	scene.pointLights.clear();
 	scene.spotLights.clear();
@@ -1033,7 +1054,7 @@ void VulkanEngine::initSyncStructs()
 
 void VulkanEngine::initDescriptors()
 {
-	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = { {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1} };
+	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = { {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3} };
 
 	globalDescriptorAllocator.init(device, 10, sizes);
 
@@ -1048,12 +1069,14 @@ void VulkanEngine::initDescriptors()
 		builder.addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 		builder.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 		builder.addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		builder.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		builder.addBinding(5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 		gpuSceneDataDescriptorLayout = builder.build(device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 	}
 	{
-		DescriptorLayoutBuilder builder;
+		/*DescriptorLayoutBuilder builder;
 		builder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-		singleImageDescriptorLayout = builder.build(device, VK_SHADER_STAGE_FRAGMENT_BIT);
+		singleImageDescriptorLayout = builder.build(device, VK_SHADER_STAGE_FRAGMENT_BIT);*/
 	}
 
 	//drawImageDescriptors = globalDescriptorAllocator.allocate(device, drawImageDescriptorLayout);
@@ -1066,10 +1089,8 @@ void VulkanEngine::initDescriptors()
 	for (uint32_t i = 0; i < FRAME_OVERLAP; i++)
 	{
 		std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frameSizes = {
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 7 },
 		};
 
 		frames[i].frameDescriptors = DescriptorAllocatorGrowable{};
@@ -1085,7 +1106,7 @@ void VulkanEngine::initDescriptors()
 	{
 		//vkDestroyDescriptorSetLayout(device, drawImageDescriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, gpuSceneDataDescriptorLayout, nullptr);
-		vkDestroyDescriptorSetLayout(device, singleImageDescriptorLayout, nullptr);
+		//vkDestroyDescriptorSetLayout(device, singleImageDescriptorLayout, nullptr);
 		globalDescriptorAllocator.destroyPools(device);
 	});
 }
@@ -1323,6 +1344,75 @@ void VulkanEngine::initDefaultData()
 		defaultCubeImage = newImage;
 	}
 
+	{
+		static unsigned int const brdfLutSize = 512;
+		VkExtent3D brdfLutExtent
+		{
+			.width = brdfLutSize,
+			.height = brdfLutSize,
+			.depth = 1
+		};
+
+		brdfLUT = createImage(brdfLutExtent, VK_FORMAT_R16G16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+		
+		VkShaderModule brdfLutShader;
+		if (!vkUtil::load_shader_module((baseAppPath + "shaders/make_brdf_lut.comp.spv").c_str(), device, &brdfLutShader))
+		{
+			std::cerr << "Error when building BRDF LUT compute shader module";
+		}
+		
+		DescriptorLayoutBuilder builder;
+		builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		VkDescriptorSetLayout const brdfLutDescriptorSetLayout = builder.build(device, VK_SHADER_STAGE_COMPUTE_BIT);
+		VkDescriptorSet const brdfLutDescriptor = getCurrentFrame().frameDescriptors.allocate(device, brdfLutDescriptorSetLayout, nullptr);
+
+		DescriptorWriter writer;
+		writer.writeImage(0, brdfLUT.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		writer.updateSet(device, brdfLutDescriptor);
+
+		VkPipelineLayoutCreateInfo const brdfLutLayoutInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+			.pNext = nullptr,
+			.setLayoutCount = 1,
+			.pSetLayouts = &brdfLutDescriptorSetLayout
+		};
+		VkPipelineLayout brdfLutPipelineLayout;
+		VK_CHECK(vkCreatePipelineLayout(device, &brdfLutLayoutInfo, nullptr, &brdfLutPipelineLayout));
+
+		VkPipelineShaderStageCreateInfo stageInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.pNext = nullptr,
+			.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+			.module = brdfLutShader,
+			.pName = "main"
+		};
+		VkComputePipelineCreateInfo brdfLutPipelineCreateInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+			.pNext = nullptr,
+			.stage = stageInfo,
+			.layout = brdfLutPipelineLayout
+		};
+		VkPipeline brdfLutPipeline;
+		VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &brdfLutPipelineCreateInfo, nullptr, &brdfLutPipeline));
+		
+		immediateSubmit([&](VkCommandBuffer const cmd)
+			{
+				vkUtil::transition_image(cmd, brdfLUT.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+				vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, brdfLutPipeline);
+				vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, brdfLutPipelineLayout, 0, 1, &brdfLutDescriptor, 0, nullptr);
+				vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(static_cast<float>(brdfLutSize) / 16.0f)), static_cast<uint32_t>(std::ceil(static_cast<float>(brdfLutSize) / 16.0f)), 1);
+				vkUtil::transition_image(cmd, brdfLUT.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			});
+
+		vkDestroyPipeline(device, brdfLutPipeline, nullptr);
+		vkDestroyPipelineLayout(device, brdfLutPipelineLayout, nullptr);
+		vkDestroyDescriptorSetLayout(device, brdfLutDescriptorSetLayout, nullptr);
+		vkDestroyShaderModule(device, brdfLutShader, nullptr);
+	}
+
 	VkSamplerCreateInfo samplerCreateInfo = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 
 	samplerCreateInfo.magFilter = VK_FILTER_NEAREST;
@@ -1332,6 +1422,9 @@ void VulkanEngine::initDefaultData()
 
 	samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
 	samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+	samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	samplerCreateInfo.minLod = 0;
+	samplerCreateInfo.maxLod = VK_LOD_CLAMP_NONE;
 	vkCreateSampler(device, &samplerCreateInfo, nullptr, &defaultSamplerLinear);
 
 	mainDeletionQueue.pushFunction([&]() 
@@ -1345,6 +1438,7 @@ void VulkanEngine::initDefaultData()
 		destroyImage(errorCheckerboardImage);
 		destroyImage(defaultNormalImage);
 		destroyImage(defaultCubeImage);
+		destroyImage(brdfLUT);
 	});
 
 	PBRMaterial::MaterialResources materialResources;
@@ -1714,6 +1808,8 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	writer.writeBuffer(1, gpuLightDataBuffer.buffer, sizeof(GPULightData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 	writer.writeImage(2, scene.skybox.environmentMap.has_value() ? scene.skybox.environmentMap->imageView : defaultCubeImage.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 	writer.writeImage(3, scene.skybox.irradianceMap.has_value() ? scene.skybox.irradianceMap->imageView : defaultCubeImage.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	writer.writeImage(4, scene.skybox.prefilterEnvironmentMap.has_value() ? scene.skybox.prefilterEnvironmentMap->imageView : defaultCubeImage.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	writer.writeImage(5, brdfLUT.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 	
 	writer.updateSet(device, globalDescriptor);
 

@@ -200,6 +200,12 @@
     <None Include="shaders\make_irradiance_map.comp">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="shaders\make_prefiltered_environment_map.comp">
+      <Filter>Shader Files</Filter>
+    </None>
+    <None Include="shaders\make_brdf_lut.comp">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="lib\imgui\imgui.natvis" />

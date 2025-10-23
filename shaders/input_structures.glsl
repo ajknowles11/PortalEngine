@@ -68,6 +68,8 @@ layout (set = 0, binding = 1) uniform LightData
 
 layout (set = 0, binding = 2) uniform samplerCube environmentMap;
 layout (set = 0, binding = 3) uniform samplerCube irradianceMap;
+layout (set = 0, binding = 4) uniform samplerCube prefilterMap;
+layout (set = 0, binding = 5) uniform sampler2D brdfLUT;
 
 layout(set = 1, binding = 0) uniform PBRMaterialData
 {  
