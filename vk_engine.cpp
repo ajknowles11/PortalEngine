@@ -383,7 +383,6 @@ void VulkanEngine::draw()
 
 	vkUtil::transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-	VkClearColorValue clearColor = { 0, 0, 0, 1 };
 	VkImageSubresourceRange drawImageSubresourceRange =
 	{
 		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -391,7 +390,8 @@ void VulkanEngine::draw()
 		.layerCount = 1
 	};
 
-	vkCmdClearColorImage(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, &clearColor, 1, &drawImageSubresourceRange);
+	VkClearColorValue clearColorValue = { clearColor.r, clearColor.g, clearColor.b, 1.0f };
+	vkCmdClearColorImage(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, &clearColorValue, 1, &drawImageSubresourceRange);
 
 	//drawBackground(cmd);
 	
@@ -643,9 +643,9 @@ void VulkanEngine::run()
 		}
 		ImGui::End();
 
-		/*if (ImGui::Begin("Background"))
+		if (ImGui::Begin("Background"))
 		{
-			ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
+			/*ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
 
 			ImGui::Text("Selected effect: %s", selected.name.c_str());
 
@@ -654,9 +654,15 @@ void VulkanEngine::run()
 			ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
 			ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
 			ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
-			ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
+			ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));*/
+
+			ImGui::Checkbox("Draw Skybox", &drawSkybox);
+
+			float clearColorPick[] = { clearColor.r, clearColor.g, clearColor.b };
+			ImGui::ColorPicker3("Clear Color", clearColorPick);
+			clearColor = glm::vec3(clearColorPick[0], clearColorPick[1], clearColorPick[2]);
 		}
-		ImGui::End();*/
+		ImGui::End();
 
 		if (ImGui::Begin("Graphics Settings"))
 		{
@@ -789,6 +795,7 @@ void VulkanEngine::initScene(std::shared_ptr<LoadedGLTF> const newScene)
 
 	sceneData.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent.width) / static_cast<float>(drawExtent.height), 10000.0f, 0.01f);
 	sceneData.proj[1][1] *= -1;
+	return;
 
 	DirectionalLight sun;
 	sun.direction = glm::vec3(0, -1.0f, -0.5f);
@@ -1301,6 +1308,10 @@ void VulkanEngine::initDefaultData()
 	defaultNormalImage = createImage(&defaultNormal, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
 
+	uint32_t const defaultMrao = glm::packUnorm4x8(glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
+	defaultMraoImage = createImage(&defaultMrao, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+		VK_IMAGE_USAGE_SAMPLED_BIT);
+
 	{
 		VkExtent3D size
 		{
@@ -1308,7 +1319,7 @@ void VulkanEngine::initDefaultData()
 			.height = 1,
 			.depth = 6
 		};
-		uint32_t const defaultCube = glm::packUnorm4x8(glm::vec4(0, 0, 0, 1));
+		unsigned char defaultCube[] = {0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255};
 		size_t const dataSize = 24;
 		AllocatedBuffer const uploadBuffer = createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
@@ -1437,6 +1448,7 @@ void VulkanEngine::initDefaultData()
 		destroyImage(blackImage);
 		destroyImage(errorCheckerboardImage);
 		destroyImage(defaultNormalImage);
+		destroyImage(defaultMraoImage);
 		destroyImage(defaultCubeImage);
 		destroyImage(brdfLUT);
 	});
@@ -1814,7 +1826,7 @@ void VulkanEngine::drawGeometry(VkCommandBuffer const cmd)
 	writer.updateSet(device, globalDescriptor);
 
 	// skybox
-	if (scene.skybox.environmentMap.has_value())
+	if (scene.skybox.environmentMap.has_value() && drawSkybox)
 	{
 		VkShaderModule envVertShader;
 		if (!vkUtil::load_shader_module((baseAppPath + "shaders/environment.vert.spv").c_str(), device, &envVertShader))

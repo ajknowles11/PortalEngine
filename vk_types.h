@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <span>
+#include <set>
 #include <array>
 #include <functional>
 #include <deque>

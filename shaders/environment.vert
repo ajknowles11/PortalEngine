@@ -32,5 +32,5 @@ void main()
 
 	position.z = 0;
 
-	gl_Position =  position;
+	gl_Position = position;
 }

@@ -153,6 +153,8 @@ public:
 	bool debugDrawNormals = false;
 
 	bool vSyncEnabled = false;
+	bool drawSkybox = true;
+	glm::vec3 clearColor = { 0.01f, 0.01f, 0.01f };
 
 	EngineStats stats;
 
@@ -220,6 +222,7 @@ public:
 	AllocatedImage grayImage;
 	AllocatedImage errorCheckerboardImage;
 	AllocatedImage defaultNormalImage;
+	AllocatedImage defaultMraoImage;
 	AllocatedImage defaultCubeImage;
 	AllocatedImage brdfLUT;
 

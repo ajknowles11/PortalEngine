@@ -37,11 +37,13 @@ void premultiply_alpha(unsigned char* data, VkExtent3D const size)
 	}
 }
 
-std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::Asset& asset, fastgltf::Image& image, std::filesystem::path directory)
+std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::Asset& asset, fastgltf::Image& image, std::filesystem::path directory, bool isSrgb = false)
 {
 	AllocatedImage newImage{};
 
 	int width, height, nrChannels;
+
+	VkFormat imageFormat = isSrgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
 
 	std::visit(
 		fastgltf::visitor
@@ -65,7 +67,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::A
 					};
 
 					premultiply_alpha(data, imageSize);
-					newImage = engine->createImage(data, imageSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT,false);
+					newImage = engine->createImage(data, imageSize, imageFormat, VK_IMAGE_USAGE_SAMPLED_BIT,false);
 
 					stbi_image_free(data);
 				}
@@ -84,7 +86,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::A
 					};
 
 					premultiply_alpha(data, imageSize);
-					newImage = engine->createImage(data, imageSize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT,false);
+					newImage = engine->createImage(data, imageSize, imageFormat, VK_IMAGE_USAGE_SAMPLED_BIT,false);
 
 					stbi_image_free(data);
 				}
@@ -115,7 +117,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine const* engine, fastgltf::A
 							};
 
 							premultiply_alpha(data, imageSize);
-							newImage = engine->createImage(data, imageSize, VK_FORMAT_R8G8B8A8_UNORM,
+							newImage = engine->createImage(data, imageSize, imageFormat,
 								VK_IMAGE_USAGE_SAMPLED_BIT, true);
 
 							stbi_image_free(data);
@@ -295,9 +297,22 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 	std::vector<AllocatedImage> images;
 	std::vector<std::shared_ptr<GLTFMaterial>> materials;
 
+	std::set<size_t> srgbImages;
+
+	for (fastgltf::Material& mat : gltf.materials)
+	{
+		if (mat.pbrData.baseColorTexture.has_value())
+		{
+			size_t img = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].imageIndex.value();
+			srgbImages.emplace(img);
+		}
+	}
+
 	// load all textures
-	for (fastgltf::Image& image : gltf.images) {
-		std::optional<AllocatedImage> img = load_image(engine, gltf, image, path.parent_path());
+	for (size_t idx = 0; idx < gltf.images.size(); idx++)
+	{
+		fastgltf::Image& image = gltf.images[idx];
+		std::optional<AllocatedImage> img = load_image(engine, gltf, image, path.parent_path(), srgbImages.contains(idx));
 
 		if (img.has_value()) {
 			images.push_back(*img);
@@ -377,7 +392,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 			materialResources.albedoSampler = engine->defaultSamplerLinear;
 			materialResources.normalImage = engine->defaultNormalImage;
 			materialResources.normalSampler = engine->defaultSamplerLinear;
-			materialResources.metalRoughAOImage = engine->whiteImage;
+			materialResources.metalRoughAOImage = engine->defaultMraoImage;
 			materialResources.metalRoughAOSampler = engine->defaultSamplerLinear;
 
 			// set the uniform buffer for the material data
